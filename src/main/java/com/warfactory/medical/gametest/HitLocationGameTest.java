@@ -15,8 +15,10 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 @GameTestHolder(WFMedical.MOD_ID)
+@PrefixGameTestTemplate(false)
 public class HitLocationGameTest {
 
     private static final String TEMPLATE = "empty";

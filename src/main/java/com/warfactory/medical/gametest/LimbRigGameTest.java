@@ -20,10 +20,12 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 import java.util.UUID;
 
 @GameTestHolder(WFMedical.MOD_ID)
+@PrefixGameTestTemplate(false)
 public class LimbRigGameTest {
 
     private static final String TEMPLATE = "empty";

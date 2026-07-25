@@ -59,7 +59,7 @@ public final class HealthBarOverlay implements IGuiOverlay {
         }
 
         int x = screenW / 2 - 91;
-        int y = screenH - 39;
+        int y = screenH - gui.leftHeight;
 
         BACKGROUND.draw(graphics, -1, -1, x, y, BAR_WIDTH, BAR_HEIGHT);
         HEALTH_FILL.setProgress(fraction);
@@ -69,5 +69,9 @@ public final class HealthBarOverlay implements IGuiOverlay {
         LABEL.setColor(color);
         LABEL.updateText(Math.round(health) + "/" + Math.round(maxHealth));
         LABEL.draw(graphics, -1, -1, x, y, BAR_WIDTH, BAR_HEIGHT);
+
+        // Mirror vanilla renderHealth's leftHeight contract so the next left-stack overlay
+        // (armor) renders above this bar instead of on top of it.
+        gui.leftHeight += 10;
     }
 }
