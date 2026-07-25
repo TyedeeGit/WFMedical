@@ -30,9 +30,7 @@ public final class HitGeometry {
 
 
     private static final double HITSCAN_RANGE = 64.0;
-    // Slack (blocks) so a fast projectile already past/inside the box still yields an entry point.
     private static final double TRACE_MARGIN = 1.0;
-    //Pose band floor: frontal-upper hits above this relY are reassigned to a raised arm when aiming.
     private static final double UPPER_ARM_LOW = 0.55;
 
     private HitGeometry() {
@@ -50,14 +48,6 @@ public final class HitGeometry {
         return hit == null ? null : classifyLocal(victim, hit);
     }
 
-    /**
-     * Through-and-through classify (R1 penetration): the ordered limbs a traced shot passes through, nearest
-     * first, spending a per-limb penetration budget so a shot can wound (say) a raised arm AND the torso
-     * behind it. The first element is the PRIMARY hit and is identical to {@link #classifyHit}'s nearest-OBB
-     * result, so a caller that only reads element 0 sees the same limb as before. Only ray-like sources
-     * pierce; point-only / non-rig hits collapse to the single {@link #classifyHit} limb. Never {@code null}
-     * &mdash; returns an empty list when no limb resolves at all.
-     */
     public static List<LimbType> classifyHitPierced(LivingEntity victim, DamageSource src, DamageCategory cat) {
         if (victim instanceof Player && MedicalConfig.riggedLimbBoxes() && rigUsable(victim)) {
             Vec3[] seg = attackSegment(victim, src, cat);
@@ -72,19 +62,11 @@ public final class HitGeometry {
         return single == null ? List.of() : List.of(single);
     }
 
-    /**
-     * Tier-2 rig classify: build the <b>un-clipped</b> attack ray (projectile segment / eye&rarr;look /
-     * blast-centre&rarr;box) and intersect it against the posed limb OBBs, taking the first one entered.
-     * Point-only sources (a resolved explosion / TACZ impact point) pick the nearest OBB by
-     * {@link Obb#distanceSq}. Returns {@code null} when no OBB resolves, so the caller falls back to
-     * Tier-1 banding. Deterministic: no {@code RandomSource}.
-     */
     private static @Nullable LimbType classifyRig(LivingEntity victim, DamageSource src, DamageCategory cat) {
         AABB box = victim.getBoundingBox();
         var direct = src.getDirectEntity();
         var attacker = src.getEntity();
 
-        // (1) Projectile: the un-clipped segment it actually flew (extended so it spans arm OBBs).
         if (direct instanceof Projectile && direct != attacker) {
             Vec3 to = direct.position();
             Vec3 from = new Vec3(direct.xo, direct.yo, direct.zo);
@@ -102,7 +84,6 @@ public final class HitGeometry {
             return rigRayPick(victim, from.subtract(d.scale(TRACE_MARGIN)), to.add(d.scale(TRACE_MARGIN)));
         }
 
-        // (2) Hitscan / melee: the attacker's un-clipped aim ray. Self-damage guard preserved.
         if (attacker instanceof LivingEntity shooter && attacker != victim) {
             boolean ballistic = (cat == DamageCategory.BALLISTIC);
             boolean melee = (direct == attacker);
@@ -120,7 +101,6 @@ public final class HitGeometry {
             }
         }
 
-        // (3) Explosion / positional: blast-centre entry point, nearest OBB.
         Vec3 srcPos = src.getSourcePosition();
         if (srcPos != null) {
             Vec3 centre = box.getCenter();
@@ -128,7 +108,6 @@ public final class HitGeometry {
             return rigPointPick(victim, entry);
         }
 
-        // (4) No geometry.
         return null;
     }
 
@@ -142,7 +121,7 @@ public final class HitGeometry {
         }
         Vec3[] seg = attackSegment(victim, src, cat);
         if (seg == null) {
-            return false; // point-only / no-ray source -> not a gap
+            return false;
         }
 
         return rigRayPick(victim, seg[0], seg[1]) == null;
@@ -155,13 +134,11 @@ public final class HitGeometry {
             return false;
         }
         if (isDirectMelee(src)) {
-            // Melee: only a PLAYER's crosshair is precise enough to gap-test; skip mob melee entirely.
             if (!(src.getEntity() instanceof Player)) {
                 return false;
             }
             return isGapShot(victim, src, cat);
         }
-        // Ranged / positional: strict only in PRECISE.
         if (mode != HitRegMode.PRECISE) {
             return false;
         }
@@ -201,7 +178,7 @@ public final class HitGeometry {
             boolean melee = (direct == attacker);
             if (ballistic || melee) {
                 if (ballistic && TaczCompat.bulletHitPos(src).isPresent()) {
-                    return null; // point impact, not a ray
+                    return null;
                 }
                 Vec3 eye = shooter.getEyePosition();
                 Vec3 look = shooter.getViewVector(1.0F);
@@ -218,7 +195,6 @@ public final class HitGeometry {
         var direct = src.getDirectEntity();
         var attacker = src.getEntity();
 
-        // (1) Projectile entity: trace the segment it actually flew last tick.
         if (direct instanceof Projectile && direct != attacker) {
             Vec3 to = direct.position();
             Vec3 from = new Vec3(direct.xo, direct.yo, direct.zo);
@@ -238,13 +214,10 @@ public final class HitGeometry {
             return hit.orElseGet(() -> nearestPointOnBox(box, target));
         }
 
-        // (2) Hitscan bullet OR (3) melee: ray from the attacker's eye along their aim. Self-damage
-        // (thorns, self-inflicted) is non-directional: skip the aim ray and fall through (spec section 8).
         if (attacker instanceof LivingEntity shooter && attacker != victim) {
             boolean ballistic = (cat == DamageCategory.BALLISTIC);
             boolean melee = (direct == attacker);
             if (ballistic || melee) {
-                // Prefer a real ballistic impact point if a future TACZ build exposes one.
                 if (ballistic) {
                     Optional<Vec3> tacz = TaczCompat.bulletHitPos(src);
                     if (tacz.isPresent()) {
@@ -260,14 +233,12 @@ public final class HitGeometry {
             }
         }
 
-        // (4) Explosion / any positional source: entry face toward the source point.
         Vec3 srcPos = src.getSourcePosition();
         if (srcPos != null) {
             Vec3 centre = box.getCenter();
             return box.clip(srcPos, centre).orElse(centre);
         }
 
-        // (5) No geometry.
         return null;
     }
 
@@ -309,7 +280,6 @@ public final class HitGeometry {
         if (pose == Pose.SLEEPING || pose == Pose.DYING) {
             return false;
         }
-        // The tilted rig covers exactly the poses PlayerRenderer.setupRotations pitches horizontal.
         return victim.isFallFlying() || victim.isVisuallySwimming() || victim.getSwimAmount(1.0F) > 0.0F;
     }
 
@@ -349,13 +319,6 @@ public final class HitGeometry {
         return best == Double.POSITIVE_INFINITY ? null : limb;
     }
 
-    /**
-     * The limbs a ray passes through, nearest first, trimmed by the penetration budget (R1/R4). Every rig OBB
-     * the ray enters is collected with its entry distance, sorted, then walked front-to-back spending each
-     * limb's {@link MedicalConfig#penetrationResistance}; the nearest limb is always included, and the walk
-     * stops once the budget is exhausted (so a dense torso ends the shot sooner than a thin arm would). Uses
-     * {@link RigCache#resolve} so it shares the per-tick cache / client-hint pose. Empty when the ray misses.
-     */
     private static List<LimbType> rigRayPierce(LivingEntity victim, Vec3 from, Vec3 to) {
         Vec3 dir = to.subtract(from);
         if (dir.lengthSqr() < 1.0e-12) {
@@ -365,7 +328,6 @@ public final class HitGeometry {
         Vec3 localDir = worldToLocalDir(victim, dir);
         HumanoidRig.LocalRig rig = RigCache.resolve(victim);
         Obb[] all = rig.all();
-        // Gather every entered OBB with its entry distance (n <= 6).
         double[] ts = new double[all.length];
         LimbType[] limbs = new LimbType[all.length];
         int n = 0;
@@ -380,7 +342,6 @@ public final class HitGeometry {
         if (n == 0) {
             return List.of();
         }
-        // Insertion sort by entry distance ascending (nearest first).
         for (int i = 1; i < n; i++) {
             double tk = ts[i];
             LimbType lk = limbs[i];
@@ -393,7 +354,6 @@ public final class HitGeometry {
             ts[j + 1] = tk;
             limbs[j + 1] = lk;
         }
-        // Spend the penetration budget front-to-back; the nearest limb is always hit.
         List<LimbType> out = new ArrayList<>(n);
         double budget = MedicalConfig.penetrationBudget();
         for (int i = 0; i < n; i++) {
@@ -406,9 +366,6 @@ public final class HitGeometry {
         return out;
     }
 
-    /**
-     * Nearest-OBB (by {@link Obb#distanceSq}) limb for a point-only source; never {@code null}.
-     */
     private static LimbType rigPointPick(LivingEntity victim, Vec3 worldPoint) {
         Vec3 local = worldToLocalPoint(victim, worldPoint);
         HumanoidRig.LocalRig rig = RigCache.resolve(victim);
@@ -424,9 +381,6 @@ public final class HitGeometry {
         return limb;
     }
 
-    /**
-     * World point -> entity-local (feet origin, Y-up, X=right, Z=front), body-yaw removed.
-     */
     private static Vec3 worldToLocalPoint(LivingEntity victim, Vec3 world) {
         double yaw = Math.toRadians(victim.yBodyRot);
         Vec3 front = new Vec3(-Math.sin(yaw), 0.0, Math.cos(yaw));
@@ -435,9 +389,6 @@ public final class HitGeometry {
         return new Vec3(off.dot(right), off.y, off.dot(front));
     }
 
-    /**
-     * World direction -> entity-local axes (no translation), matching {@link #worldToLocalPoint}.
-     */
     private static Vec3 worldToLocalDir(LivingEntity victim, Vec3 dir) {
         double yaw = Math.toRadians(victim.yBodyRot);
         Vec3 front = new Vec3(-Math.sin(yaw), 0.0, Math.cos(yaw));
@@ -449,16 +400,13 @@ public final class HitGeometry {
     public static LimbType classifyLocal(LivingEntity victim, Vec3 worldHit) {
         AABB box = victim.getBoundingBox();
 
-        // (3.5) Downed fallback: height bands are meaningless on the low-wide rotated box.
         if (victim instanceof Player player && MedicalState.isDowned(player)) {
             return null;
         }
         if (box.getYsize() < box.getXsize()) {
-            // Box wider-than-tall guard: any lying / flattened pose -> defer to the sampler.
             return null;
         }
         if (!isUprightHumanoid(victim)) {
-            // Crawling / swimming / flying: the model is tilted horizontal, so vertical bands are invalid.
             return null;
         }
 
@@ -470,11 +418,10 @@ public final class HitGeometry {
         Vec3 right = new Vec3(-front.z, 0.0, front.x);
 
         Vec3 off = worldHit.subtract(centre);
-        double side = off.dot(right);   // >0 = victim's RIGHT, <0 = LEFT
-        double along = off.dot(front);  // >0 = FRONT, <0 = BACK
+        double side = off.dot(right);
+        double along = off.dot(front);
         double nx = side / (box.getXsize() * 0.5);
 
-        // (3.4) Pose-aware arms: a frontal, upper hit while aiming takes the raised arm first.
         if (MedicalConfig.poseAwareArms() && isAimingWeapon(victim)
                 && along > 0.0
                 && relY >= UPPER_ARM_LOW && relY < MedicalConfig.headBandBottom()) {
@@ -521,7 +468,6 @@ public final class HitGeometry {
                 return true;
             }
         }
-        // A TACZ gun raises the arms only from the MAIN hand; an off-hand gun is slung on the back (not aimed).
         return TaczCompat.isHeldGun(victim.getMainHandItem());
     }
 
@@ -529,7 +475,6 @@ public final class HitGeometry {
     private static LimbType armForAimPose(LivingEntity victim, double nx) {
         HumanoidArm main = (victim instanceof Player player) ? player.getMainArm() : HumanoidArm.RIGHT;
         boolean rightMain = (main == HumanoidArm.RIGHT);
-        // The near side of the entry decides which raised hand caught it; ties go to the main hand.
         if (nx > 0.0) {
             return LimbType.RIGHT_ARM;
         }

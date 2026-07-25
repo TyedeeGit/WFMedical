@@ -9,10 +9,6 @@ import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.RegistryObject;
 
-/**
- * The single "Warfactory Medical" creative tab. Its display list is populated from every entry in
- * {@link ModItems}, so new items appear automatically. Icon is the medkit.
- */
 public final class ModCreativeTab {
 
     public static final DeferredRegister<CreativeModeTab> TABS =

@@ -26,16 +26,6 @@ import org.joml.Matrix4f;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * CLIENT-ONLY MineMenu-style limb selection wheel. Each damaged limb is a donut pie-slice tinted by its
- * severity (red→green), carrying a mini body silhouette with that limb lit and injury glyphs (bleed / fracture
- * / pain). The slice under the mouse (by angle from centre, outside the deadzone) highlights and grows; a click
- * applies the held treatment to that limb via {@link TreatmentInteractions#sendAction}. Opens with a short
- * sweep/scale animation. Never mutates medical state – it only sends the authoritative request.
- *
- * <p>Slice geometry: slice {@code i} of {@code n} spans the angular sector starting at {@code -PI/2} (straight
- * up) and sweeping clockwise, so item 0 sits at the top exactly like the legacy radial.</p>
- */
 public final class LimbWheelScreen extends Screen {
 
     private static final float BASE_ANGLE = -Mth.HALF_PI;
@@ -50,9 +40,6 @@ public final class LimbWheelScreen extends Screen {
     private static final int SLICE_BG_HOVER = 0xE0232C37;
     private static final int RIM_HOVER = 0xD0FFE070;
     private static final int HUB_BG = 0xE00E1116;
-    /**
-     * Red tint for a remove-tourniquet slice (matches the interaction sheet's red remove button face).
-     */
     private static final int TQ_REMOVE_TINT = 0xFFB02020;
 
     private final int targetEntityId;
@@ -66,13 +53,6 @@ public final class LimbWheelScreen extends Screen {
     private record Entry(LimbType limb, LimbSummary summary, boolean removeTourniquet) {
     }
 
-    /**
-     * @param showMask   bitmask ({@code 1 << LimbType.ordinal()}) of the limbs to offer as slices – the
-     *                   caller ({@code TreatmentInteractions.proceedLocalized}) has already intersected
-     *                   damaged with what the held item can treat, so the wheel itself no longer filters
-     * @param removeMask subset of {@code showMask} whose limbs already wear a tourniquet while a tourniquet
-     *                   item is held; those slices REMOVE it instead of applying the item
-     */
     public LimbWheelScreen(int targetEntityId, ResourceLocation itemId, LimbSummary[] limbs,
                            int showMask, int removeMask) {
         super(Component.translatable("gui.wfmedical.wheel.title"));
@@ -105,7 +85,6 @@ public final class LimbWheelScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // Close if the wheel became meaningless (no slices, or the item left the medic's hands).
         if (entries.isEmpty() || !stillHoldingItem()) {
             onClose();
             return;
@@ -119,7 +98,6 @@ public final class LimbWheelScreen extends Screen {
         float step = Mth.TWO_PI / n;
         this.hovered = pickHovered(mouseX, mouseY, cx, cy, step, n);
 
-        // Pass 1: slice backgrounds + severity tint + hovered rim.
         for (int i = 0; i < n; i++) {
             Entry e = entries.get(i);
             boolean hot = i == hovered;
@@ -129,8 +107,6 @@ public final class LimbWheelScreen extends Screen {
             float rOut = (R_OUT + (hot ? HOVER_GROW : 0.0F)) * open;
 
             fillSector(g, cx, cy, rIn, rOut, a0, a1, hot ? SLICE_BG_HOVER : SLICE_BG);
-            // Remove-tourniquet slices are flat red (mirrors the interaction sheet's red remove button);
-            // apply slices tint by the limb's severity.
             int tint = e.removeTourniquet()
                     ? withAlpha(TQ_REMOVE_TINT, hot ? 0.65F : 0.42F)
                     : withAlpha(MedicalUIParts.limbColor(e.summary.healthPercent()), hot ? 0.55F : 0.32F);
@@ -140,7 +116,6 @@ public final class LimbWheelScreen extends Screen {
             }
         }
 
-        // Pass 2: slice contents, faded in over the animation.
         if (open > 0.35F) {
             float contentAlpha = Mth.clamp((open - 0.35F) / 0.5F, 0.0F, 1.0F);
             for (int i = 0; i < n; i++) {
@@ -152,7 +127,6 @@ public final class LimbWheelScreen extends Screen {
             }
         }
 
-        // Centre hub (drawn last, above the ring): held item + target + hovered-limb readout.
         drawHub(g, cx, cy, open);
     }
 
@@ -169,23 +143,15 @@ public final class LimbWheelScreen extends Screen {
         drawGlyphs(g, e.summary, px, py + 26.0F, alpha);
     }
 
-    /**
-     * Mini humanoid silhouette centred at {@code (cx, cy)} with {@code highlight} lit and the rest dimmed.
-     * "Left"/"Right" are anatomical, drawn on the viewer's left/right respectively (matching the body diagram).
-     */
     private void drawBody(GuiGraphics g, float cxf, float cyf, LimbType highlight, float alpha, boolean hot) {
         int cx = Math.round(cxf);
         int cy = Math.round(cyf);
         int base = withAlpha(0xFF464F5C, alpha);
         int lit = withAlpha(hot ? 0xFFFFE070 : 0xFFF2F6FA, alpha);
-        // head
         g.fill(cx - 3, cy - 12, cx + 3, cy - 7, color(highlight, LimbType.HEAD, base, lit));
-        // torso
         g.fill(cx - 4, cy - 6, cx + 4, cy + 3, color(highlight, LimbType.TORSO, base, lit));
-        // arms
         g.fill(cx - 7, cy - 6, cx - 5, cy + 2, color(highlight, LimbType.LEFT_ARM, base, lit));
         g.fill(cx + 5, cy - 6, cx + 7, cy + 2, color(highlight, LimbType.RIGHT_ARM, base, lit));
-        // legs
         g.fill(cx - 4, cy + 3, cx - 1, cy + 11, color(highlight, LimbType.LEFT_LEG, base, lit));
         g.fill(cx + 1, cy + 3, cx + 4, cy + 11, color(highlight, LimbType.RIGHT_LEG, base, lit));
     }
@@ -194,9 +160,6 @@ public final class LimbWheelScreen extends Screen {
         return highlight == part ? lit : base;
     }
 
-    /**
-     * Injury glyphs (bleed drop / fracture bone / pain spark) in a centred row under the limb readout.
-     */
     private void drawGlyphs(GuiGraphics g, LimbSummary s, float cxf, float yf, float alpha) {
         int count = (s.bleeding() > 0.0F ? 1 : 0) + (s.fracture() ? 1 : 0) + (s.pain() > 0.0F ? 1 : 0);
         if (count == 0) {
@@ -273,12 +236,11 @@ public final class LimbWheelScreen extends Screen {
         return e != null ? e.getName() : Component.translatable("gui.wfmedical.wheel.target");
     }
 
-    // ------------------------------------------------------------------ input
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (button != 0) {
-            onClose(); // any non-left button just dismisses the wheel
+            onClose();
             return true;
         }
         float cx = this.width / 2.0F;
@@ -305,7 +267,7 @@ public final class LimbWheelScreen extends Screen {
         double dy = my - cy;
         double dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < R_IN * 0.9F) {
-            return -1; // centre deadzone
+            return -1;
         }
         double rel = Math.atan2(dy, dx) - BASE_ANGLE;
         rel = ((rel % (2.0 * Math.PI)) + 2.0 * Math.PI) % (2.0 * Math.PI);
@@ -313,12 +275,7 @@ public final class LimbWheelScreen extends Screen {
         return Math.min(idx, n - 1);
     }
 
-    // ------------------------------------------------------------------ drawing helpers
 
-    /**
-     * Filled annular sector (donut wedge) as a triangle strip in the given flat colour, with blending.
-     * {@code rIn = 0} degenerates to a filled pie/disc (used for the hub).
-     */
     private static void fillSector(GuiGraphics g, float cx, float cy, float rIn, float rOut,
                                    float a0, float a1, int argb) {
         if (rOut <= 0.05F || a1 <= a0) {
@@ -368,12 +325,9 @@ public final class LimbWheelScreen extends Screen {
 
     private static float easeOut(float t) {
         float inv = 1.0F - t;
-        return 1.0F - inv * inv * inv; // cubic ease-out
+        return 1.0F - inv * inv * inv;
     }
 
-    /**
-     * Replace the alpha channel of {@code argb} with {@code (originalAlpha * factor)}.
-     */
     private static int withAlpha(int argb, float factor) {
         int a = Math.round(((argb >>> 24) & 0xFF) * Mth.clamp(factor, 0.0F, 1.0F));
         return (a << 24) | (argb & 0x00FFFFFF);

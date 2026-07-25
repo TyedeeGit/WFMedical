@@ -9,12 +9,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
-/**
- * Decides whether the victim's armor blocked, partially blocked, or was fully penetrated by a hit.
- * Reads {@link Attributes#ARMOR} / {@link Attributes#ARMOR_TOUGHNESS} plus (for players) the durability
- * of the piece covering the struck limb. Higher armor raises the BLOCKED/PARTIAL probability; ballistic
- * and piercing hits penetrate far more readily than blunt ones. The result is probabilistic.
- */
 public final class ArmorEvaluation {
 
     private ArmorEvaluation() {
@@ -25,7 +19,6 @@ public final class ArmorEvaluation {
         if (victim == null || rand == null) {
             return Outcome.FULL;
         }
-        // Purely elemental / internal categories are not stopped by physical armor here.
         if (cat == DamageCategory.FIRE || cat == DamageCategory.CHEMICAL
                 || cat == DamageCategory.RADIATION || cat == DamageCategory.FALL) {
             return Outcome.FULL;
@@ -35,19 +28,16 @@ public final class ArmorEvaluation {
         double toughness = attr(victim, Attributes.ARMOR_TOUGHNESS);
         float durabilityFactor = pieceDurabilityFactor(victim, limb);
 
-        // How effective conventional armor is at stopping this category (1.0 = nominal).
         float effectiveness = categoryEffectiveness(cat);
 
-        // Composite defensive score, then squash into a 0..0.95 mitigation fraction.
         double score = (armor * 0.04D) + (toughness * 0.05D) + (durabilityFactor * 0.15D);
         double mitigation = (score * effectiveness) / (1.0D + score * effectiveness);
-        // Heavier hits are more likely to defeat armor.
         double loadPenalty = amount / (amount + 12.0D);
         mitigation *= (1.0D - 0.5D * loadPenalty);
         mitigation = clamp(mitigation, 0.0D, 0.95D);
 
-        double blockedThreshold = mitigation * mitigation; // needs strong armor to fully stop
-        double partialThreshold = mitigation;              // partial is easier to reach
+        double blockedThreshold = mitigation * mitigation;
+        double partialThreshold = mitigation;
 
         double roll = rand.nextDouble();
         if (roll < blockedThreshold) {
@@ -65,7 +55,7 @@ public final class ArmorEvaluation {
         }
         switch (cat) {
             case BALLISTIC:
-                return 0.45F; // bullets punch through
+                return 0.45F;
             case PIERCING:
                 return 0.6F;
             case EXPLOSION:
@@ -73,7 +63,7 @@ public final class ArmorEvaluation {
             case SLASHING:
                 return 1.0F;
             case BLUNT:
-                return 1.2F; // plate is very good at stopping impact penetration
+                return 1.2F;
             default:
                 return 1.0F;
         }
@@ -89,7 +79,7 @@ public final class ArmorEvaluation {
             return 0.0F;
         }
         if (!stack.isDamageableItem() || stack.getMaxDamage() <= 0) {
-            return 1.0F; // indestructible piece is at full protection
+            return 1.0F;
         }
         float remaining = 1.0F - ((float) stack.getDamageValue() / (float) stack.getMaxDamage());
         return clampF(remaining, 0.0F, 1.0F);

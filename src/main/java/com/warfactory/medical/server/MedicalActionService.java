@@ -29,33 +29,13 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.registries.ForgeRegistries;
 
-/**
- * Server-authoritative tracking of timed active treatments. State is transient (never NBT); physiology is
- * only mutated on completion via {@link TreatmentService#applyTargeted}; independent of the vanilla
- * right-click channel (now disabled on the item) so the two never double-apply.
- *
- * <p>A treatment has an ACTOR (always the {@link ServerPlayer} performing it – the timer, interruption and
- * item-consumption live on them) and a TARGET (self by default, or another player / downed body the medic
- * right-clicked). The completion mutation lands on the target's profile.</p>
- */
 public final class MedicalActionService {
 
-    /**
-     * Max distance² a medic may reach to treat another entity (matches a generous interaction reach).
-     */
     private static final double REACH_SQR = 6.0D * 6.0D;
 
     private MedicalActionService() {
     }
 
-    /**
-     * Begin a timed treatment for {@code actor} using the medical item identified by {@code itemId}, targeting
-     * {@code limb} (nullable = auto-pick) on the entity {@code targetId} ({@code -1} = the actor themself).
-     * Validates the item, inventory presence, the actor's hands, that no treatment is already running, reach to
-     * a non-self target, and creative immunity.
-     *
-     * @return {@code true} when a treatment was started (and an {@link ActiveTreatmentPacket} sent).
-     */
     public static boolean start(ServerPlayer actor, ResourceLocation itemId, LimbType limb, int targetId) {
         if (actor == null || itemId == null) {
             return false;
@@ -63,7 +43,6 @@ public final class MedicalActionService {
         if ((actor.isCreative() || actor.isSpectator()) && MedicalConfig.effectImmuneInCreative()) {
             return false;
         }
-        // A medic who cannot use their hands (unconscious / both arms disabled) cannot start a treatment.
         if (MedicalState.isHandsDisabled(actor)) {
             return false;
         }
@@ -80,7 +59,6 @@ public final class MedicalActionService {
         if (!(item instanceof MedicalItem medical)) {
             return false;
         }
-        // An item is a valid active-action source if it carries a Treatment OR injects a Substance.
         Treatment treatment = medical.getTreatment();
         boolean injectable = item instanceof InjectableItem inj && inj.getSubstance() != null;
         if (treatment == null && !injectable) {
@@ -88,10 +66,9 @@ public final class MedicalActionService {
         }
         int slot = slotToLock(actor, item);
         if (slot < 0) {
-            return false; // actor is not carrying the item they asked to use
+            return false;
         }
 
-        // Resolve the target: injectables are systemic and self-only; otherwise -1/self or a validated other.
         LivingEntity target;
         IMedicalData targetData;
         if (injectable || targetId < 0 || targetId == actor.getId()) {
@@ -100,7 +77,7 @@ public final class MedicalActionService {
         } else {
             target = resolveOtherTarget(actor, targetId);
             if (target == null) {
-                return false; // stale / out of reach
+                return false;
             }
             targetData = medicalDataOf(target);
             if (targetData == null) {
@@ -112,12 +89,10 @@ public final class MedicalActionService {
             }
         }
 
-        // Tourniquet is applied INSTANTLY (not a timed treatment): toggle it onto the selected appendage.
         if (treatment != null && treatment.action() == TreatmentAction.APPLY_TOURNIQUET) {
             return applyTourniquet(actor, slot, target, targetData, limb, item);
         }
 
-        // Resolve the channel duration and the (presentation-only) action for the client overlay.
         int totalTicks;
         TreatmentAction action;
         if (treatment != null) {
@@ -125,8 +100,6 @@ public final class MedicalActionService {
             action = treatment.action();
         } else {
             totalTicks = ((InjectableItem) item).getSubstance().useDurationTicks();
-            // Injectables carry no TreatmentAction; REDUCE_PAIN is the closest presentation label and keeps the
-            // overlay packet's non-null-action invariant. Completion resolves the item, not this action.
             action = TreatmentAction.REDUCE_PAIN;
         }
         if (totalTicks < 1) {
@@ -142,17 +115,6 @@ public final class MedicalActionService {
         return true;
     }
 
-    /**
-     * Reply to a medic who right-clicked with a localized treatment: gather the target's per-limb summaries
-     * ({@code targetId = -1} = the requester themself) plus the per-limb treatable mask for the requested
-     * item, and send them back so the client can open the limb wheel. Validates the actor's hands, item and
-     * reach.
-     *
-     * <p>A dirty profile is brought current through the full engine-equivalent path
-     * ({@link MedicalEngine#resync} / {@link #syncTarget}) rather than a bare {@code recompute}: recompute
-     * alone clears the dirty flag the engine keys its own effects-apply + client sync off, so a bare call
-     * here could silently eat the target's pending physiology update.</p>
-     */
     public static void requestTargetInfo(ServerPlayer actor, int targetId, ResourceLocation itemId) {
         if (actor == null || itemId == null) {
             return;
@@ -176,8 +138,6 @@ public final class MedicalActionService {
         if (target == null || data == null) {
             return;
         }
-        // Bring a stale profile current WITHOUT eating its dirty flag: a live player gets a full engine
-        // re-sync (recompute + body effects + client sync), a downed/persistent body a recompute + re-stamp.
         MedicalProfile profile = data.getProfile();
         if (profile.isDirty()) {
             syncTarget(target, data);
@@ -189,15 +149,6 @@ public final class MedicalActionService {
                 new TreatmentTargetInfoPacket(replyTargetId, itemId, snap.limbs(), mask));
     }
 
-    /**
-     * Reply to a medic who opened the interaction sheet aimed at ANOTHER entity: gather the target's FULL
-     * medical snapshot (all limbs + vitals) plus its worn-tourniquet mask and send them back so the client can
-     * open / refresh the sheet bound to that target. Validates the actor's hands and reach; self is never
-     * routed here (the client opens its own sheet from the local cache).
-     *
-     * <p>Like {@link #requestTargetInfo}, a dirty profile is brought current through {@link #syncTarget} rather
-     * than a bare {@code recompute}, so this examine never eats the target's pending physiology update.</p>
-     */
     public static void requestTargetSheet(ServerPlayer actor, int targetId) {
         if (actor == null || targetId < 0 || targetId == actor.getId()) {
             return;
@@ -221,17 +172,12 @@ public final class MedicalActionService {
                 target.getId(), MedicalSyncPacket.fromProfile(profile), MedicalNetworking.tourniquetMask(profile)));
     }
 
-    /**
-     * Advance one engine pass; completes when elapsed >= totalTicks (applies the treatment to the recorded
-     * target, consumes the actor's item, notifies the actor) or cancels if the item was swapped away or the
-     * target has vanished / moved out of reach.
-     */
     public static void tick(ServerPlayer actor, MedicalProfile actorProfile, long nowTick) {
         if (actor == null || actorProfile == null || !actorProfile.hasActiveTreatment()) {
             return;
         }
         if (nowTick - actorProfile.getActiveStartGameTime() < actorProfile.getActiveTotalTicks()) {
-            return; // still in progress
+            return;
         }
 
         ResourceLocation itemId = ResourceLocation.tryParse(actorProfile.getActiveItemId());
@@ -241,7 +187,6 @@ public final class MedicalActionService {
             cancel(actor, "invalid_item");
             return;
         }
-        // "Cannot change items while applying": the item must still sit in the exact slot it started in.
         int slot = actorProfile.getActiveSlot();
         Inventory inv = actor.getInventory();
         if (slot < 0 || slot >= inv.getContainerSize() || inv.getItem(slot).getItem() != item) {
@@ -249,7 +194,6 @@ public final class MedicalActionService {
             return;
         }
 
-        // Resolve the target again – it may have logged out / moved out of reach mid-treatment.
         int targetId = actorProfile.getActiveTargetId();
         LivingEntity target;
         IMedicalData targetData;
@@ -267,7 +211,6 @@ public final class MedicalActionService {
 
         boolean applied;
         if (injectable) {
-            // Injection is systemic and self-only (target is always the actor for injectables).
             applied = SubstanceService.inject(actor, ((InjectableItem) item).getSubstance());
         } else {
             applied = TreatmentService.applyTargeted(targetData, actor.level().getGameTime(),
@@ -277,15 +220,11 @@ public final class MedicalActionService {
             if (!actor.getAbilities().instabuild) {
                 inv.getItem(slot).shrink(1);
             }
-            // Another target needs an explicit push (its own engine pass may be a cadence behind); a self
-            // target is reconciled by the surrounding engine tick that invoked us.
             if (target != actor) {
                 syncTarget(target, targetData);
             }
             actor.displayClientMessage(Component.translatable("gui.wfmedical.treat.applied"), true);
         } else {
-            // The channel ran its full duration but changed nothing (no matching wound on the chosen limb,
-            // state already handled, ...). Say so – a silent no-op reads as "healing is broken".
             actor.displayClientMessage(Component.translatable("gui.wfmedical.treat.no_effect"), true);
         }
 
@@ -293,9 +232,6 @@ public final class MedicalActionService {
         MedicalNetworking.sendActiveTreatment(actor, ActiveTreatmentPacket.inactive());
     }
 
-    /**
-     * Cancel any running treatment and tell the actor's client to hide the progress overlay.
-     */
     public static void cancel(ServerPlayer player, String reason) {
         if (player == null) {
             return;
@@ -312,10 +248,6 @@ public final class MedicalActionService {
         MedicalNetworking.sendActiveTreatment(player, ActiveTreatmentPacket.inactive());
     }
 
-    /**
-     * Instantly apply a tourniquet (arm/leg only, one per limb) onto {@code target}: slows bleeding without
-     * treating wounds. Consumes from the actor's locked slot and re-syncs the target + broadcasts the worn mask.
-     */
     private static boolean applyTourniquet(ServerPlayer actor, int actorSlot, LivingEntity target,
                                            IMedicalData targetData, LimbType limb, Item item) {
         if (limb == null || !(limb.isArm() || limb.isLeg())) {
@@ -324,7 +256,7 @@ public final class MedicalActionService {
         MedicalProfile profile = targetData.getProfile();
         Limb targetLimb = profile.limb(limb);
         if (targetLimb.hasTourniquet()) {
-            return false; // one tourniquet per appendage
+            return false;
         }
         targetLimb.setTourniquet(true);
         profile.markDirty();
@@ -341,18 +273,10 @@ public final class MedicalActionService {
             }
         }
         syncTarget(target, targetData);
-        // Broadcast the worn-tourniquet mask to trackers + self so the worn model renders on the target.
         MedicalNetworking.broadcastTourniquets(target, profile);
         return true;
     }
 
-    /**
-     * Remove the tourniquet from {@code limb} on {@code targetId} ({@code -1} = the requesting player
-     * themself); UI-driven, no item consumed to perform it; no-op if none present. A medic may remove a
-     * tourniquet they (or anyone) applied to another player / downed body within reach – required because an
-     * unconscious patient cannot operate their own removal UI. The recovery roll returns the tourniquet item
-     * to the REMOVER.
-     */
     public static boolean removeTourniquet(ServerPlayer actor, LimbType limb, int targetId) {
         if (actor == null || limb == null) {
             return false;
@@ -363,7 +287,6 @@ public final class MedicalActionService {
             target = actor;
             data = MedicalCapabilities.get(actor);
         } else {
-            // Removing someone else's tourniquet needs working hands and reach, exactly like treating them.
             if (MedicalState.isHandsDisabled(actor)) {
                 return false;
             }
@@ -387,17 +310,12 @@ public final class MedicalActionService {
         return true;
     }
 
-    /**
-     * On a successful tourniquet removal, roll {@link MedicalConfig#tourniquetRecoveryChance} to return the
-     * tourniquet item to the remover; if their inventory is full it drops at their feet, and on a failed roll it
-     * is lost. Skipped in creative (the item is free there anyway).
-     */
     private static void recoverTourniquet(ServerPlayer player) {
         if (player.getAbilities().instabuild) {
             return;
         }
         if (player.getRandom().nextFloat() >= (float) MedicalConfig.tourniquetRecoveryChance()) {
-            return; // lost
+            return;
         }
         Item item = ModItems.TOURNIQUET.get();
         if (item == null) {
@@ -409,10 +327,6 @@ public final class MedicalActionService {
         }
     }
 
-    /**
-     * Reconcile a treated target's vanilla body + clients after a completed treatment / tourniquet. A live
-     * player gets a full engine re-sync; a downed body has its derived health re-stamped in place.
-     */
     private static void syncTarget(LivingEntity target, IMedicalData data) {
         if (target instanceof ServerPlayer sp) {
             MedicalEngine.resync(sp);
@@ -422,10 +336,6 @@ public final class MedicalActionService {
         }
     }
 
-    /**
-     * Whether any OTHER online player is already channelling a treatment on {@code target}. Blocks a second
-     * medic from double-treating (both would consume items; the later completion usually no-ops).
-     */
     private static boolean isBeingTreatedByAnother(ServerPlayer actor, LivingEntity target) {
         MinecraftServer server = actor.getServer();
         if (server == null) {
@@ -447,10 +357,6 @@ public final class MedicalActionService {
         return false;
     }
 
-    /**
-     * Resolve a non-self treatment target by entity id: must be a live {@link LivingEntity} within reach.
-     * Returns {@code null} when stale / dead / too far.
-     */
     private static LivingEntity resolveOtherTarget(ServerPlayer actor, int targetId) {
         Entity e = actor.level().getEntity(targetId);
         if (!(e instanceof LivingEntity le) || !le.isAlive()) {
@@ -462,20 +368,12 @@ public final class MedicalActionService {
         return le;
     }
 
-    /**
-     * @return the medical data of {@code entity} (player or persistent body), or {@code null} when absent.
-     */
     private static IMedicalData medicalDataOf(LivingEntity entity) {
         return entity.getCapability(MedicalCapabilities.MEDICAL).resolve().orElse(null);
     }
 
-    /**
-     * The slot to lock for the treatment: the currently-held hotbar slot when it holds {@code item} (so the
-     * client hotbar lock lines up with the hand), else the first inventory slot holding it.
-     */
     private static int slotToLock(ServerPlayer actor, Item item) {
         Inventory inv = actor.getInventory();
-        // A held hotbar slot (0..8) is preferred so the client hotbar lock lines up with the acting hand.
         if (inv.selected >= 0 && inv.selected < 9) {
             ItemStack sel = inv.getItem(inv.selected);
             if (!sel.isEmpty() && sel.getItem() == item) {
@@ -485,9 +383,6 @@ public final class MedicalActionService {
         return findItemSlot(actor, item);
     }
 
-    /**
-     * @return the first inventory slot holding {@code item}, or {@code -1} when the player has none.
-     */
     private static int findItemSlot(ServerPlayer player, Item item) {
         Inventory inv = player.getInventory();
         for (int i = 0; i < inv.getContainerSize(); i++) {

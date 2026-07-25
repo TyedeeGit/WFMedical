@@ -7,22 +7,9 @@ import com.warfactory.medical.core.limb.Limb;
 import com.warfactory.medical.core.limb.LimbType;
 import net.minecraft.network.FriendlyByteBuf;
 
-/**
- * FULL medical snapshot, server -> client. Carries the player's {@link DerivedStats}, the blood pool,
- * the current {@link HealthState} and a compact per-limb summary (health%, bleeding, pain, fracture).
- *
- * <p>Sent as a fresh baseline on login / respawn (and whenever the client has no prior snapshot); once a
- * baseline exists the engine sends the smaller {@link MedicalDeltaPacket} carrying only the changed
- * components. The per-component (de)serialization is SHARED with that delta via the
- * {@link #writeStats}/{@link #readStats}/{@link #writeLimb}/{@link #readLimb} helpers – keep write and read
- * in lockstep, as the field order is the wire contract.</p>
- */
 public record MedicalSyncPacket(DerivedStats stats, LimbSummary[] limbs, double bloodMl, double maxBloodMl,
                                 float painSuppression, float drugLoad, HealthState state, float deathProgress) {
 
-    /**
-     * Build a snapshot from the authoritative server-side profile (reads cached limb aggregates).
-     */
     public static MedicalSyncPacket fromProfile(MedicalProfile profile) {
         LimbType[] all = LimbType.VALUES;
         LimbSummary[] summaries = new LimbSummary[all.length];
@@ -108,25 +95,17 @@ public record MedicalSyncPacket(DerivedStats stats, LimbSummary[] limbs, double 
         buf.writeBoolean(s.fracture());
     }
 
-    // ---- Reusable component (de)serialization, SHARED with MedicalDeltaPacket. The field order below is the
-    // wire contract; keep each write/read pair in lockstep or the stream silently corrupts. ----
 
     static LimbSummary readLimb(FriendlyByteBuf buf) {
         return new LimbSummary(buf.readEnum(LimbType.class), buf.readFloat(), buf.readFloat(),
                 buf.readFloat(), buf.readBoolean());
     }
 
-    /**
-     * Perceived-pain suppression fraction (0..1) from painkillers at snapshot time.
-     */
     @Override
     public float painSuppression() {
         return painSuppression;
     }
 
-    /**
-     * Accumulating injectable-drug load at snapshot time (0..); drives the overdose UI.
-     */
     @Override
     public float drugLoad() {
         return drugLoad;
@@ -146,16 +125,10 @@ public record MedicalSyncPacket(DerivedStats stats, LimbSummary[] limbs, double 
         buf.writeFloat(deathProgress);
     }
 
-    /**
-     * Client-thread handler: overwrite the local cache with this authoritative snapshot.
-     */
     public void handleClient() {
         ClientMedicalCache.set(this);
     }
 
-    /**
-     * Compact per-limb summary carried in the snapshot; enough for a HUD, not the raw trauma list.
-     */
     public record LimbSummary(LimbType limb, float healthPercent, float bleeding, float pain, boolean fracture) {
     }
 }

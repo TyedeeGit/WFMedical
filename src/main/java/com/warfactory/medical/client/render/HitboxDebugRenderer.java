@@ -37,36 +37,20 @@ public final class HitboxDebugRenderer {
 
     private static final double RANGE = 32.0;
     private static final int[][] EDGES = {
-            {0, 1}, {2, 3}, {4, 5}, {6, 7}, // along X
-            {0, 2}, {1, 3}, {4, 6}, {5, 7}, // along Y
-            {0, 4}, {1, 5}, {2, 6}, {3, 7}  // along Z
+            {0, 1}, {2, 3}, {4, 5}, {6, 7},
+            {0, 2}, {1, 3}, {4, 6}, {5, 7},
+            {0, 4}, {1, 5}, {2, 6}, {3, 7}
     };
-    /**
-     * The six box faces as corner-index quads (corner bits: x=1, y=2, z=4), each drawn as two triangles for
-     * the FILLED style. Winding is irrelevant &mdash; {@link HitboxRenderType#FILLED} disables face culling.
-     */
     private static final int[][] FACES = {
-            {0, 2, 6, 4}, {1, 3, 7, 5}, // -X, +X
-            {0, 4, 5, 1}, {2, 3, 7, 6}, // -Y, +Y
-            {0, 1, 3, 2}, {4, 6, 7, 5}  // -Z, +Z
+            {0, 2, 6, 4}, {1, 3, 7, 5},
+            {0, 4, 5, 1}, {2, 3, 7, 6},
+            {0, 1, 3, 2}, {4, 6, 7, 5}
     };
-    /**
-     * Face alpha for the half-opaque FILLED style.
-     */
     private static final float FILL_ALPHA = 0.30F;
     public static boolean enabled = false;
 
-    /**
-     * The overlay draw style, scrolled through while the overlay is on.
-     */
     public enum Style {
-        /**
-         * Wireframe box edges only (the original overlay).
-         */
         EDGES,
-        /**
-         * Wireframe edges plus translucent filled faces on the rig limb boxes, for reading the solid volume.
-         */
         FILLED
     }
 
@@ -75,16 +59,10 @@ public final class HitboxDebugRenderer {
     private HitboxDebugRenderer() {
     }
 
-    /**
-     * Flip the overlay on/off (called from the keybind poll).
-     */
     public static void toggle() {
         enabled = !enabled;
     }
 
-    /**
-     * Scroll the draw style by {@code dir} (+1 / -1), wrapping. Returns the new style for a status message.
-     */
     public static Style cycleStyle(int dir) {
         Style[] all = Style.values();
         int next = Math.floorMod(style.ordinal() + dir, all.length);
@@ -120,9 +98,6 @@ public final class HitboxDebugRenderer {
         Matrix3f nrm = ps.last().normal();
         boolean regActive = MedicalConfig.hitRegistrationMode() != HitRegMode.OFF;
 
-        // FILLED style: the translucent faces go in their own pass, fully emitted and flushed BEFORE the lines.
-        // The lines buffer and the fill buffer share the immediate-mode fallback BufferBuilder, so the two
-        // formats must never be written interleaved -- hence separate passes with an endBatch between them.
         if (style == Style.FILLED) {
             VertexConsumer fillVc = buffers.getBuffer(HitboxRenderType.FILLED);
             for (LivingEntity e : targets) {
@@ -134,11 +109,9 @@ public final class HitboxDebugRenderer {
 
         VertexConsumer vc = buffers.getBuffer(RenderType.lines());
         for (LivingEntity e : targets) {
-            //vanilla collision box
             AABB tight = e.getBoundingBox();
             LevelRenderer.renderLineBox(ps, vc, tight.minX, tight.minY, tight.minZ,
                     tight.maxX, tight.maxY, tight.maxZ, 0.55F, 0.55F, 0.55F, 0.6F);
-            //Envelope hit-scan box (white)
             if (regActive) {
                 AABB env = MedicalHitReg.registrationBox(e);
                 LevelRenderer.renderLineBox(ps, vc, env.minX, env.minY, env.minZ,
@@ -184,22 +157,16 @@ public final class HitboxDebugRenderer {
         }
     }
 
-    /**
-     * The entity's interpolated feet position and yaw frame as {@code {px, py, pz, fx, fz, rx, rz}}.
-     */
     private static double[] frame(LivingEntity e, float pt) {
         double px = Mth.lerp(pt, e.xOld, e.getX());
         double py = Mth.lerp(pt, e.yOld, e.getY());
         double pz = Mth.lerp(pt, e.zOld, e.getZ());
         double yaw = Math.toRadians(Mth.rotLerp(pt, e.yBodyRotO, e.yBodyRot));
         double fx = -Math.sin(yaw);
-        double fz = Math.cos(yaw);   // front = (-sin, 0, cos)
-        return new double[]{px, py, pz, fx, fz, -fz, fx}; // ..., rx = -fz, rz = fx
+        double fz = Math.cos(yaw);
+        return new double[]{px, py, pz, fx, fz, -fz, fx};
     }
 
-    /**
-     * While tuning, spotlight the limb being edited: brighten it, fade the rest so the target reads clearly.
-     */
     private static float limbAlpha(LimbType limb, LimbType highlight, float alpha) {
         if (highlight == null) {
             return alpha;
@@ -207,9 +174,6 @@ public final class HitboxDebugRenderer {
         return limb == highlight ? Math.min(1.0F, alpha + 0.4F) : alpha * 0.3F;
     }
 
-    /**
-     * The OBB's eight world-space corners, indexed by {@link #cornerIndex}.
-     */
     private static Vec3[] cornersOf(Obb obb, double[] frame) {
         double px = frame[0];
         double py = frame[1];
@@ -229,11 +193,9 @@ public final class HitboxDebugRenderer {
         for (int sx = -1; sx <= 1; sx += 2) {
             for (int sy = -1; sy <= 1; sy += 2) {
                 for (int sz = -1; sz <= 1; sz += 2) {
-                    // Corner in entity-local coords
                     double lx = c.x + sx * hx * ax.x + sy * hy * ay.x + sz * hz * az.x;
                     double ly = c.y + sx * hx * ax.y + sy * hy * ay.y + sz * hz * az.y;
                     double lz = c.z + sx * hx * ax.z + sy * hy * ay.z + sz * hz * az.z;
-                    // entity-local -> world: feet + lx*right + ly*up + lz*front.
                     double wx = px + lx * rx + lz * fx;
                     double wy = py + ly;
                     double wz = pz + lx * rz + lz * fz;
@@ -274,12 +236,12 @@ public final class HitboxDebugRenderer {
 
     private static float[] colorFor(LimbType limb) {
         return switch (limb) {
-            case HEAD -> new float[]{1.0F, 0.2F, 0.2F};   // red
-            case TORSO -> new float[]{0.2F, 1.0F, 0.3F};   // green
-            case LEFT_ARM -> new float[]{0.2F, 0.8F, 1.0F};   // cyan
-            case RIGHT_ARM -> new float[]{0.2F, 0.4F, 1.0F};   // blue
-            case LEFT_LEG -> new float[]{1.0F, 0.9F, 0.2F};   // yellow
-            default -> new float[]{1.0F, 0.5F, 0.1F};   // orange
+            case HEAD -> new float[]{1.0F, 0.2F, 0.2F};
+            case TORSO -> new float[]{0.2F, 1.0F, 0.3F};
+            case LEFT_ARM -> new float[]{0.2F, 0.8F, 1.0F};
+            case RIGHT_ARM -> new float[]{0.2F, 0.4F, 1.0F};
+            case LEFT_LEG -> new float[]{1.0F, 0.9F, 0.2F};
+            default -> new float[]{1.0F, 0.5F, 0.1F};
         };
     }
 }

@@ -21,20 +21,11 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
-/**
- * CLIENT-ONLY passed-out blur. Full-screen PostChain that blurs the 3D scene while the local player is
- * UNCONSCIOUS (covers both overdose and bleed-out) OR in the conscious {@code asphyxiating()} phase.
- * Composes with blood-loss desaturation and the UnconsciousOverlay vignette. PostChain created lazily;
- * all failures disable the effect for the session rather than crashing.
- */
 @Mod.EventBusSubscriber(modid = WFMedical.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class PassoutBlurEffect {
 
     private static final float FADE_STEP = 0.06F;
     private static final float EPSILON = 0.001F;
-    /**
-     * Blur radius at full fade in texels; keeps tap count bounded and cheap.
-     */
     private static final float MAX_RADIUS = 6.0F;
 
     private static final ResourceLocation SHADER =
@@ -43,28 +34,18 @@ public final class PassoutBlurEffect {
     private static PostChain chain;
     private static int chainWidth = -1;
     private static int chainHeight = -1;
-    /**
-     * Set once on unrecoverable failure; blocks all further processing for the session.
-     */
     private static boolean disabled;
 
-    /**
-     * Smoothed client-side fade; persists across frames.
-     */
     private static float fade;
 
     private PassoutBlurEffect() {
     }
 
-    /**
-     * Fires before HUD: blurs the scene while HUD overlays stay crisp.
-     */
     @SubscribeEvent
     public static void onRenderGuiPre(RenderGuiEvent.Pre event) {
         if (disabled) {
             return;
         }
-        // Debug master gate: when off, skip and bleed the fade back to zero. Toggle with TOGGLE_SCREEN_FX.
         if (!MedicalDebug.screenEffectsEnabled()) {
             fade = 0.0F;
             return;
@@ -72,12 +53,10 @@ public final class PassoutBlurEffect {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null || player.isSpectator()) {
-            // Not in a world / spectating: bleed the fade back to zero so we resume from off, no processing.
             fade = 0.0F;
             return;
         }
 
-        // Advance the fade every frame (even while conscious) so it can decay smoothly back to zero.
         boolean blur = shouldBlurVision();
         float target = blur ? 1.0F : 0.0F;
         fade += (target - fade) * FADE_STEP;
@@ -96,27 +75,18 @@ public final class PassoutBlurEffect {
                 return;
             }
             setBlurUniforms(active, fade * MAX_RADIUS);
-            // Flush any pending GUI batch so the chain reads a complete frame.
             event.getGuiGraphics().flush();
             active.process(event.getPartialTick());
-            // Rebind the main target so subsequent HUD rendering draws to the right place.
             var mainTarget = mc.getMainRenderTarget();
             mainTarget.bindWrite(false);
-            // PostPass leaves BLEND DISABLED and never restores the caller's render state; without this the HUD
-            // drawn next -- and translucent world/sky elements next frame -- render wrong. Restore GUI defaults.
             RenderSystem.viewport(0, 0, mainTarget.viewWidth, mainTarget.viewHeight);
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            // The final blit pass writes its fullscreen quad's depth into the MAIN target's depth buffer; since
-            // this runs INSIDE the HUD pass (after vanilla's pre-HUD depth clear), that stale depth would occlude
-            // every depth-tested GUI draw after it (LDLib RenderType.gui() is LEQUAL, item models), making mod
-            // overlays and inventory/hotbar items invisible. Re-clear depth to undo it.
             RenderSystem.depthMask(true);
             RenderSystem.clearDepth(1.0);
             RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
         } catch (Throwable t) {
-            // A shader/GL failure must never crash the game: disable and tear down for the session.
             WFMedical.LOGGER.warn("[{}] Passed-out blur effect failed; disabling for this session",
                     WFMedical.MOD_ID, t);
             disable();
@@ -129,18 +99,11 @@ public final class PassoutBlurEffect {
         closeChain();
     }
 
-    /**
-     * Snap fade to zero on respawn so the passed-out blur does not linger onto the fresh life.
-     */
     public static void reset() {
         fade = 0.0F;
     }
 
-    // ------------------------------------------------------------------ internals
 
-    /**
-     * True while unconscious (overdose or bleed-out) OR in the conscious asphyxiating phase.
-     */
     private static boolean shouldBlurVision() {
         var stats = ClientMedicalCache.stats();
         return stats.unconscious() || stats.asphyxiating();
@@ -174,9 +137,6 @@ public final class PassoutBlurEffect {
         return chain;
     }
 
-    /**
-     * Even-indexed passes blur horizontally (1,0); odd vertically (0,1) – separable 2D blur.
-     */
     private static void setBlurUniforms(PostChain postChain, float radius) {
         List<PostPass> passes = ((PostChainAccessor) postChain).wfmedical$getPasses();
         for (int i = 0; i < passes.size(); i++) {
@@ -196,7 +156,6 @@ public final class PassoutBlurEffect {
             try {
                 chain.close();
             } catch (Exception ignored) {
-                // Closing is best-effort; nothing actionable if it fails.
             }
             chain = null;
         }

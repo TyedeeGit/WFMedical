@@ -29,32 +29,17 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * Client FORGE-bus handlers for Warfactory Medical: key polling, hiding the vanilla hearts, and clearing
- * the client cache on disconnect. CLIENT-ONLY (subscribed on {@link Dist#CLIENT}); never loaded on a
- * dedicated server.
- */
 @Mod.EventBusSubscriber(modid = WFMedical.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class MedicalClientEvents {
 
-    /**
-     * Ticks the current {@link DeathScreen} has been open, for the stuck-respawn-button safety net.
-     */
     private static int deathScreenTicks;
 
-    /**
-     * How often (client ticks) the open interaction sheet re-requests the bound teammate's snapshot so their
-     * readout follows treatments applied to them.
-     */
     private static final int TARGET_SHEET_POLL_TICKS = 10;
     private static int targetSheetPoll;
 
     private MedicalClientEvents() {
     }
 
-    /**
-     * Poll medical key bindings at end of tick; drain queued clicks so held keys don't repeat.
-     */
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
@@ -62,11 +47,8 @@ public final class MedicalClientEvents {
         }
         Minecraft mc = Minecraft.getInstance();
         keepRespawnButtonUsable(mc);
-        // Keep a teammate-bound interaction sheet current (and unbind it when it closes) – this must run even
-        // while the sheet screen is open, so it sits before the "screen open" early-out below.
         pollTargetSheet(mc);
         if (mc.player == null || mc.screen != null) {
-            // Still drain any queued clicks so they don't fire the moment a screen closes.
             drain(MedicalKeyMappings.OPEN_SHEET);
             drain(MedicalKeyMappings.OPEN_RADIAL);
             drain(MedicalKeyMappings.TOGGLE_DEBUG);
@@ -78,11 +60,9 @@ public final class MedicalClientEvents {
             return;
         }
         while (MedicalKeyMappings.OPEN_SHEET.consumeClick()) {
-            // Aiming at a teammate / downed body opens the sheet FOR them (F4): ask the server for their full
-            // snapshot and open on its reply. Aiming at nothing opens the local player's own sheet immediately.
             int targetId = TreatmentInteractions.pickTargetEntityId();
             if (targetId >= 0) {
-                MedInteractionScreen.markPendingOpen(targetId); // allow this request's reply to open the sheet
+                MedInteractionScreen.markPendingOpen(targetId);
                 MedicalNetworking.sendToServer(new TargetSheetRequestPacket(targetId));
             } else {
                 MedInteractionScreen.open();
@@ -113,10 +93,6 @@ public final class MedicalClientEvents {
         }
     }
 
-    /**
-     * While the hitbox overlay is on, the scroll wheel cycles its draw style (edges &harr; filled) instead of
-     * the hotbar. Off, or in a screen, scrolling behaves normally.
-     */
     @SubscribeEvent
     public static void onMouseScroll(net.minecraftforge.client.event.InputEvent.MouseScrollingEvent event) {
         if (!HitboxDebugRenderer.enabled) {
@@ -137,15 +113,9 @@ public final class MedicalClientEvents {
 
     private static void drain(net.minecraft.client.KeyMapping key) {
         while (key.consumeClick()) {
-            // discard
         }
     }
 
-    /**
-     * While the interaction sheet is bound to a teammate, re-request that teammate's snapshot every
-     * {@link #TARGET_SHEET_POLL_TICKS} ticks so treatments applied to them show up live; unbind the moment the
-     * sheet is no longer open (Esc / a different screen / disconnect) so later self-UIs read the local cache.
-     */
     private static void pollTargetSheet(Minecraft mc) {
         int tid = MedInteractionScreen.targetId();
         if (tid < 0) {
@@ -163,19 +133,12 @@ public final class MedicalClientEvents {
         }
     }
 
-    /**
-     * Safety net for the vanilla DeathScreen respawn button. DeathScreen re-enables buttons only on the
-     * EXACT tick its counter reaches 20 – missed on window resize or skipped screen tick, leaving buttons
-     * disabled forever. Once the screen has been open >25 ticks with every button still disabled, force
-     * them all active. Skips if any button is already active, so it never clobbers a just-clicked button.
-     */
     private static void keepRespawnButtonUsable(Minecraft mc) {
         Screen screen = mc.screen;
         if (!(screen instanceof DeathScreen)) {
             deathScreenTicks = 0;
             return;
         }
-        // Give vanilla its normal ~1s delay to enable the buttons; only intervene if it never did.
         if (++deathScreenTicks <= 25) {
             return;
         }
@@ -196,9 +159,6 @@ public final class MedicalClientEvents {
         }
     }
 
-    /**
-     * Cancel the vanilla PLAYER_HEALTH overlay so our HealthBarOverlay replaces it; skipped in creative/spectator.
-     */
     @SubscribeEvent
     public static void onRenderGuiOverlayPre(RenderGuiOverlayEvent.Pre event) {
         if (!event.getOverlay().id().equals(VanillaGuiOverlay.PLAYER_HEALTH.id())) {
@@ -211,10 +171,6 @@ public final class MedicalClientEvents {
         event.setCanceled(true);
     }
 
-    /**
-     * Hide the first-person hand(s) while both arms are drained/disabled – the player physically can't raise
-     * them. Cancelling {@link RenderHandEvent} suppresses the held-item + arm render for that frame.
-     */
     @SubscribeEvent
     public static void onRenderHand(RenderHandEvent event) {
         LocalPlayer player = Minecraft.getInstance().player;
@@ -223,9 +179,6 @@ public final class MedicalClientEvents {
         }
     }
 
-    /**
-     * Drop all cached medical / UI state when the local player disconnects.
-     */
     @SubscribeEvent
     public static void onLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientMedicalCache.clear();

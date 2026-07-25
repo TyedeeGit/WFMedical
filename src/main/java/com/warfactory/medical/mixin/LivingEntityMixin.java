@@ -9,11 +9,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Restricts sprint and jump for players with leg fractures or in the unconscious state.
- * All decisions are read from the server-authoritative {@link MedicalState} facade, which is
- * null-safe for non-players and pre-sync clients.
- */
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityMixin {
 
@@ -25,7 +20,6 @@ public abstract class LivingEntityMixin {
         callbackInfo.setReturnValue(callbackInfo.getReturnValueF() * MedicalState.jumpMultiplier(player));
     }
 
-    // Belt-and-braces: hard-cancel the jump event itself so no impulse, sound or event fires while downed.
     @Inject(method = "jumpFromGround", at = @At("HEAD"), cancellable = true)
     private void wfmedical$blockJumpWhenUnconscious(CallbackInfo callbackInfo) {
         if ((Object) this instanceof Player player && MedicalState.isUnconscious(player)) {
@@ -33,10 +27,6 @@ public abstract class LivingEntityMixin {
         }
     }
 
-    // LivingEntity.setSprinting is the single funnel that both sets the sprint flag AND adds the
-    // +30% sprint speed modifier. Cancelling at this chokepoint (rather than Entity.setSprinting)
-    // blocks BOTH the flag and the speed boost, on client and server, so a stray START_SPRINTING
-    // packet cannot re-enable sprinting server-side either.
     @Inject(method = "setSprinting(Z)V", at = @At("HEAD"), cancellable = true)
     private void wfmedical$preventBlockedSprint(boolean sprinting, CallbackInfo callbackInfo) {
         if (sprinting

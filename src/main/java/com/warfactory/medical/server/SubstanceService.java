@@ -12,22 +12,11 @@ import com.warfactory.medical.core.substance.SubstanceRegistry;
 import com.warfactory.medical.network.MedicalNetworking;
 import net.minecraft.server.level.ServerPlayer;
 
-/**
- * Server-authoritative application of an injectable {@link Substance} to a player's medical state. Injection
- * is systemic (no limb target); every mutation recomputes derived stats and pushes a full sync immediately.
- */
 public final class SubstanceService {
 
     private SubstanceService() {
     }
 
-    /**
-     * Inject {@code substance} into {@code player}. Skips creative/spectator-immune players and honours the
-     * {@code enableInjectables} master toggle. Returns whether anything changed so callers only consume the
-     * item on success.
-     *
-     * @return {@code true} when the injection mutated the medical state.
-     */
     public static boolean inject(ServerPlayer player, Substance substance) {
         if (player == null || substance == null) {
             return false;
@@ -38,10 +27,6 @@ public final class SubstanceService {
         if ((player.isCreative() || player.isSpectator()) && MedicalConfig.effectImmuneInCreative()) {
             return false;
         }
-        // Resolve the live, config-loaded definition (populated from wfmedical_definitions.toml) keyed by the
-        // item's registry name so TOML retuning (thresholds, doses, unconsciousness/durations, reversal, ...) actually
-        // takes effect. The Substance captured on the item is only the load-order safety net used when the
-        // active registry has no matching entry.
         Substance live = SubstanceRegistry.active().get(substance.itemId());
         if (live != null) {
             substance = live;
@@ -55,7 +40,6 @@ public final class SubstanceService {
 
         if (substance.antidote()) {
             profile.setDrugLoad(Math.max(0.0F, profile.getDrugLoad() - substance.reversalAmount()));
-            // Anti-drugs also flush any active STIMULANT buff (speed / anaesthesia / jump).
             profile.setStimulant(0.0F);
             profile.setStimulantEndTick(0L);
             profile.setPainSuppression(0.0F);
@@ -86,9 +70,6 @@ public final class SubstanceService {
             }
             if (profile.getDrugLoad() >= substance.overdoseThreshold()) {
                 if (shouldStartAsphyxia(player, profile)) {
-                    // Conscious respiratory-depression precursor: the per-tick breathing hook then drains the
-                    // player's air (weakness / heavy slow / blur) and tips them into a FATAL unconsciousness
-                    // unless the drug is reversed (naloxone) or decays back below the asphyxia threshold in time.
                     profile.startAsphyxia(now);
                 } else {
                     int grace = MedicalConfig.blackoutGraceTicks();
@@ -102,7 +83,6 @@ public final class SubstanceService {
             }
         }
 
-        // Optional secondary blood restore.
         if (substance.bloodRestoreMl() > 0.0D && profile.getBloodMl() < profile.getMaxBloodMl()) {
             profile.setBloodMl(profile.getBloodMl() + substance.bloodRestoreMl());
         }
@@ -110,8 +90,6 @@ public final class SubstanceService {
         profile.markDirty();
         data.bumpRevision();
 
-        // Recompute + push onto the vanilla body immediately so the overdose movement lock / pain mask (or,
-        // for an antidote, the movement unlock) take effect this instant, then full-sync the client.
         PhysiologyParams params = MedicalConfig.toPhysiologyParams();
         DerivedStats stats = profile.recompute(params);
         if (!((player.isCreative() || player.isSpectator()) && MedicalConfig.effectImmuneInCreative())) {
@@ -122,10 +100,6 @@ public final class SubstanceService {
         return true;
     }
 
-    /**
-     * True if this overdose should enter the conscious asphyxia phase instead of immediate unconsciousness
-     * (requires feature enabled, load in the asphyxia window but below lethal threshold, and a chance roll).
-     */
     private static boolean shouldStartAsphyxia(ServerPlayer player, MedicalProfile profile) {
         if (!MedicalConfig.asphyxiaEnabled()) {
             return false;
@@ -138,8 +112,6 @@ public final class SubstanceService {
         if (load < MedicalConfig.asphyxiaThreshold()) {
             return false;
         }
-        // A severe (lethal-threshold) overdose skips asphyxia and blacks out immediately, keeping the fatal
-        // respiratory-depression drain path intact.
         if (MedicalConfig.overdoseLethalEnabled() && MedicalConfig.overdoseLethalThreshold() > 0.0D
                 && load >= MedicalConfig.overdoseLethalThreshold()) {
             return false;

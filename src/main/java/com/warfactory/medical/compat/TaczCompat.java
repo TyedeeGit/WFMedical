@@ -15,20 +15,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 
-/**
- * Soft-compat glue for TACZ (Timeless and Classics Zero). Deliberately has <b>no</b> hard reference
- * to any TACZ class: gun/bullet damage is recognised purely by matching {@link DamageSource} message
- * ids and damage-type registry keys against a configurable, lower-cased id substring set. This keeps
- * the integration robust across TACZ versions.
- */
 public final class TaczCompat {
 
     public static final String MOD_ID = "tacz";
 
-    /**
-     * Substrings (lower-case) matched against a damage source's msgId and its damage-type registry
-     * key namespace/path. Mutable so config can extend/replace it at load time.
-     */
     private static final Set<String> BULLET_DAMAGE_IDS =
             new CopyOnWriteArraySet<>(Set.of("tacz", "bullet", "gun"));
 
@@ -43,9 +33,6 @@ public final class TaczCompat {
         return BULLET_DAMAGE_IDS;
     }
 
-    /**
-     * Replaces the id set; values are lower-cased and blank entries dropped.
-     */
     public static void setBulletDamageIds(Collection<String> ids) {
         BULLET_DAMAGE_IDS.clear();
         if (ids == null) {
@@ -58,10 +45,6 @@ public final class TaczCompat {
         }
     }
 
-    /**
-     * @return true only when TACZ is loaded and the given source looks like gun/bullet damage.
-     * Matches on the source msgId as well as the damage-type registry key namespace and path.
-     */
     public static boolean isGunDamage(DamageSource source) {
         if (source == null || !isLoaded()) {
             return false;

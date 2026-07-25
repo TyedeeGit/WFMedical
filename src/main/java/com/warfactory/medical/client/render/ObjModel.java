@@ -14,23 +14,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * A minimal Wavefront OBJ mesh (positions {@code v}, texcoords {@code vt}, normals {@code vn}, and faces
- * {@code f}) loaded from a resource and rendered through a {@link VertexConsumer}. Meant for small
- * Blockbench-exported attachment models (the tourniquet is five cuboids). Faces may be triangles, quads, or
- * n-gons; each is emitted into a QUADS-mode buffer (a triangle as a degenerate quad, an n-gon fanned).
- *
- * <p>On load the mesh is re-centred on its bounding-box centre so the model's authored position is
- * irrelevant &mdash; the caller places it purely via the {@link PoseStack}. Positions stay in the OBJ's own
- * units (Blockbench exports in blocks, i.e. 1/16 of a model unit), so a caller rendering in entity
- * model-space typically scales by ~16 and flips Y.</p>
- */
 public final class ObjModel {
 
-    private final float[][] positions; // re-centred, OBJ units
-    private final float[][] uvs;       // u, v (already flipped to image space)
+    private final float[][] positions;
+    private final float[][] uvs;
     private final float[][] normals;
-    private final int[][][] faces;     // [face][vertex]{posIdx, uvIdx, normIdx} (uv/norm -1 if absent)
+    private final int[][][] faces;
 
     private ObjModel(float[][] positions, float[][] uvs, float[][] normals, int[][][] faces) {
         this.positions = positions;
@@ -39,9 +28,6 @@ public final class ObjModel {
         this.faces = faces;
     }
 
-    /**
-     * Parse the OBJ at {@code loc} from the active resource packs, or return {@code null} (logged) on failure.
-     */
     public static ObjModel load(ResourceLocation loc) {
         try {
             Optional<Resource> res = Minecraft.getInstance().getResourceManager().getResource(loc);
@@ -63,7 +49,7 @@ public final class ObjModel {
                     String[] tok = line.split("\\s+");
                     switch (tok[0]) {
                         case "v" -> pos.add(new float[]{parse(tok, 1), parse(tok, 2), parse(tok, 3)});
-                        case "vt" -> uv.add(new float[]{parse(tok, 1), 1.0F - parse(tok, 2)}); // OBJ V is bottom-up
+                        case "vt" -> uv.add(new float[]{parse(tok, 1), 1.0F - parse(tok, 2)});
                         case "vn" -> norm.add(new float[]{parse(tok, 1), parse(tok, 2), parse(tok, 3)});
                         case "f" -> face.add(parseFace(tok, pos.size(), uv.size(), norm.size()));
                         default -> {
@@ -96,9 +82,6 @@ public final class ObjModel {
         return verts;
     }
 
-    /**
-     * Resolve a 1-based (or negative-relative) OBJ index to 0-based, or {@code -1} when absent/empty.
-     */
     private static int index(String[] parts, int slot, int count) {
         if (slot >= parts.length || parts[slot].isEmpty()) {
             return -1;
@@ -131,9 +114,6 @@ public final class ObjModel {
         }
     }
 
-    /**
-     * Emit the mesh into {@code vc} (a QUADS-mode entity buffer) at the current {@code pose} transform.
-     */
     public void render(PoseStack pose, VertexConsumer vc, int light, int overlay,
                        float red, float green, float blue, float alpha) {
         Matrix4f mat = pose.last().pose();
@@ -149,7 +129,6 @@ public final class ObjModel {
                 emit(mat, nm, vc, face[2], light, overlay, red, green, blue, alpha);
                 emit(mat, nm, vc, face[2], light, overlay, red, green, blue, alpha);
             } else {
-                // fan an n-gon into degenerate quads
                 for (int i = 1; i + 1 < face.length; i++) {
                     emit(mat, nm, vc, face[0], light, overlay, red, green, blue, alpha);
                     emit(mat, nm, vc, face[i], light, overlay, red, green, blue, alpha);

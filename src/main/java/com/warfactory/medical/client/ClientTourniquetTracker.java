@@ -7,12 +7,6 @@ import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * CLIENT-ONLY registry of each player entity id's worn-tourniquet limb mask (bit {@code 1 <<
- * LimbType.ordinal()}), kept server-authoritative via {@code TourniquetStatePacket} (broadcast to trackers,
- * so you see teammates' tourniquets too). Read on the render thread, written on the client main thread;
- * guarded by a lock like {@link ClientDownedTracker}. Pure presentation state.
- */
 @Mod.EventBusSubscriber(modid = WFMedical.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class ClientTourniquetTracker {
 
@@ -22,9 +16,6 @@ public final class ClientTourniquetTracker {
     private ClientTourniquetTracker() {
     }
 
-    /**
-     * Record (or clear, when {@code mask == 0}) a player's worn-tourniquet mask. Client main thread.
-     */
     public static void set(int entityId, int mask) {
         synchronized (LOCK) {
             if (mask == 0) {
@@ -35,18 +26,12 @@ public final class ClientTourniquetTracker {
         }
     }
 
-    /**
-     * The worn-tourniquet limb mask for a player entity id ({@code 0} if none / unknown). Render thread.
-     */
     public static int mask(int entityId) {
         synchronized (LOCK) {
             return MASKS.get(entityId);
         }
     }
 
-    /**
-     * Whether the given limb ordinal currently wears a tourniquet on that entity.
-     */
     public static boolean has(int entityId, int limbOrdinal) {
         return (mask(entityId) & (1 << limbOrdinal)) != 0;
     }

@@ -26,16 +26,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
 
-/**
- * CLIENT-ONLY character sheet. Reads the synced {@link ClientMedicalCache} snapshot and sends request
- * packets; never mutates medical state. Debug panel toggle is LIVE: its updateScreen() fires while the
- * sheet is open even when the panel is invisible (LDLib recurses into active children, not only visible
- * ones). The entire mainGroup is marked {@code setClientSideWidget()} so supplier-driven labels re-read
- * the cache each tick (required for client-only UIs per LDLib contract).
- */
 public final class CharacterSheetUI {
 
-    // ------------------------------------------------------------------ layout constants (px)
     private static final int UI_W = 280;
     private static final int UI_H = 200;
 
@@ -59,9 +51,6 @@ public final class CharacterSheetUI {
     private static final int ACTION_GAP = 2;
     private static final int ACTION_COLS = 2;
 
-    /**
-     * Nearly opaque so the debug overlay fully hides the vitals/actions beneath it.
-     */
     private static final int DEBUG_BG = 0xF00A0A0A;
     private static final int DEBUG_LINE_H = 11;
 
@@ -79,35 +68,25 @@ public final class CharacterSheetUI {
         ui.background(ResourceBorderTexture.BORDERED_BACKGROUND);
         WidgetGroup root = ui.mainGroup;
 
-        // --- header ---
         root.addWidget(new LabelWidget(10, 6, "Medical Status"));
         root.addWidget(new LabelWidget(196, 6,
                 () -> "Debug: " + (ClientMedicalCache.isDebug() ? "on" : "off")));
 
-        // --- left: body chart + selected-limb detail ---
         root.addWidget(MedicalUIParts.bodyDiagram(BODY_X, BODY_Y, BODY_W, BODY_H));
         addSelectedLimbDetail(root, player);
 
-        // --- right: vitals panel ---
         addVitals(root, player);
 
-        // --- right: treatment action buttons ---
         addTreatmentActions(root);
 
-        // --- overlaid, live-toggled debug panel ---
         root.addWidget(buildDebugGroup(player));
 
-        // Every live widget re-reads its supplier only when marked client-side (client-only UI).
         root.setClientSideWidget();
 
         ClientUIOpener.openClientUI(ui);
     }
 
-    // ------------------------------------------------------------------ selected-limb detail
 
-    /**
-     * Left column beneath the body chart: the currently selected limb's summary, updated live.
-     */
     private static void addSelectedLimbDetail(WidgetGroup root, Player player) {
         int y = DETAIL_Y;
         root.addWidget(new LabelWidget(DETAIL_X, y, () -> {
@@ -148,11 +127,7 @@ public final class CharacterSheetUI {
         }));
     }
 
-    // ------------------------------------------------------------------ vitals
 
-    /**
-     * Right upper column: live top-level vitals. The state line is recolored each tick.
-     */
     private static void addVitals(WidgetGroup root, Player player) {
         int y = VITALS_Y;
 
@@ -172,7 +147,6 @@ public final class CharacterSheetUI {
                 UiText.escape("Pain: " + Math.round(MedicalUIParts.stats().totalPain() * 100.0F) + "%")));
         y += VITALS_LINE_H;
 
-        // State line: colored live by health state.
         LabelWidget stateLine = new LabelWidget(VITALS_X, y, () ->
                 "State: " + MedicalUIParts.stateName(ClientMedicalCache.state()).getString()) {
             @Override
@@ -207,11 +181,7 @@ public final class CharacterSheetUI {
         }));
     }
 
-    // ------------------------------------------------------------------ treatment actions
 
-    /**
-     * Item set snapshotted at open time; reopen the sheet to pick up inventory changes.
-     */
     private static void addTreatmentActions(WidgetGroup root) {
         root.addWidget(new LabelWidget(ACTIONS_X, ACTIONS_Y - 12, "Treatment"));
 
@@ -240,7 +210,6 @@ public final class CharacterSheetUI {
         }
     }
 
-    // ------------------------------------------------------------------ debug overlay
 
     private static DraggableScrollableWidgetGroup buildDebugGroup(Player player) {
         DebugGroup group = new DebugGroup(96, 18, 180, 176);
@@ -327,11 +296,7 @@ public final class CharacterSheetUI {
         return String.format(Locale.ROOT, "%.2f", value);
     }
 
-    // ------------------------------------------------------------------ helpers
 
-    /**
-     * LDLib recurses updateScreen into all active children (not only visible), enabling live toggle.
-     */
     private static final class DebugGroup extends DraggableScrollableWidgetGroup {
         private DebugGroup(int x, int y, int width, int height) {
             super(x, y, width, height);

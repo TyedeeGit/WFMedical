@@ -51,7 +51,6 @@ public final class OpenPersistenceCompat {
                 return Optional.of(uuid);
             }
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // Treat any reflective failure as "unknown owner"
         }
         return Optional.empty();
     }
@@ -64,7 +63,6 @@ public final class OpenPersistenceCompat {
                     try {
                         resolved = bodyClass.getMethod("getPlayerUUID");
                     } catch (NoSuchMethodException ignored) {
-                        // Older/newer OP without this accessor
                     }
                     ownerMethod = resolved;
                     ownerMethodResolved = true;

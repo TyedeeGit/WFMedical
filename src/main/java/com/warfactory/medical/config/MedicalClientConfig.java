@@ -2,11 +2,6 @@ package com.warfactory.medical.config;
 
 import net.minecraftforge.common.ForgeConfigSpec;
 
-/**
- * CLIENT-side (per-player, never synced) presentation config. Kept separate from the server-authoritative
- * {@link MedicalConfig} so HUD-only preferences – like where the damage-outline silhouette sits – are decided
- * by each client, not dictated by the server. Registered as {@code ModConfig.Type.CLIENT}.
- */
 public final class MedicalClientConfig {
 
     public static final ForgeConfigSpec SPEC;
@@ -66,11 +61,6 @@ public final class MedicalClientConfig {
         return DAMAGE_OUTLINE_SCALE.get().floatValue();
     }
 
-    /**
-     * Nine-point screen anchor. {@code hx}/{@code vy} are the fraction of the free space (screen minus content)
-     * placed before the content, so {@code 0} = flush to the left/top edge, {@code 0.5} = centred, {@code 1} =
-     * flush to the right/bottom edge.
-     */
     public enum HudAnchor {
         TOP_LEFT(0.0F, 0.0F),
         TOP_CENTER(0.5F, 0.0F),

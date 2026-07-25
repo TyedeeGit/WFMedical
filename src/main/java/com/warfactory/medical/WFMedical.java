@@ -25,9 +25,6 @@ import org.slf4j.Logger;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Warfactory Medical mod entry point. Registers items, networking, config, and defers TOML load.
- */
 @Mod(WFMedical.MOD_ID)
 public final class WFMedical {
 
@@ -38,45 +35,28 @@ public final class WFMedical {
     public WFMedical(FMLJavaModLoadingContext context) {
         IEventBus modBus = context.getModEventBus();
 
-        // Registry objects (DeferredRegisters) onto the mod bus.
         ModItems.register(modBus);
         ModCreativeTab.register(modBus);
 
-        // S2C networking channel (idempotent; safe during construction).
         MedicalNetworking.register();
 
-        // COMMON config: numeric engine tunables (TOML).
         context.registerConfig(ModConfig.Type.COMMON, MedicalConfig.SPEC);
-        // CLIENT config: per-client HUD preferences (never synced), e.g. the damage-outline position.
         context.registerConfig(ModConfig.Type.CLIENT, MedicalClientConfig.SPEC);
 
-        // Mod-bus lifecycle listeners. NOTE: the medical capability registers itself lazily through the
-        // CapabilityManager.get(CapabilityToken) call in MedicalCapabilities (as Forge 1.20.1 requires) –
-        // do NOT also call RegisterCapabilitiesEvent.register() for it, that double-registers and crashes.
         modBus.addListener(this::onCommonSetup);
-        // Mirror the hitboxDebug flag into the rig-tuning hot-path switch on load and every config reload.
         modBus.addListener(this::onConfigChanged);
 
         LOGGER.info("[{}] {} constructed", MOD_ID, MOD_NAME);
     }
 
-    /**
-     * Keep {@link RigTuning#ACTIVE} in step with {@code hitlocation.hitboxDebug} on config load/reload, so the
-     * limb-box tuning path is only ever armed when the test flag is set. Fires for our COMMON spec only.
-     */
     private void onConfigChanged(ModConfigEvent event) {
         if (event.getConfig().getSpec() == MedicalConfig.SPEC) {
             RigTuning.ACTIVE = MedicalConfig.hitboxDebug();
-            // Seed the live per-stance envelope reach from config so tuning starts from the persisted values.
             RigTuning.seedEnvelope(MedicalConfig.envelopeReachSnapshot());
-            // R2: load the data-driven limb-box geometry override (or reset to built-in defaults if absent).
             RigSpecIO.reload(FMLPaths.CONFIGDIR.get());
         }
     }
 
-    /**
-     * Load TOML definitions (or hardcoded fallback), then activate registries.
-     */
     private void onCommonSetup(FMLCommonSetupEvent event) {
         event.enqueueWork(() -> {
             TraumaRegistry registry = new TraumaRegistry();

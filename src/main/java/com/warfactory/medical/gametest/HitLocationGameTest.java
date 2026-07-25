@@ -16,35 +16,20 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
 
-/**
- * Deterministic GameTests for the Tier 1 geometric hit-location classifier. Each test spawns a stationary
- * ArmorStand at {@code yBodyRot=0} (facing +Z south; victim front=+Z, victim right=-X) and fires a synthetic
- * ray. Ray endpoints derive from the live bounding box; no RandomSource is consulted on the geometric path.
- */
 @GameTestHolder(WFMedical.MOD_ID)
 public class HitLocationGameTest {
 
-    /**
-     * Structure template shared by every test (a 3x3 stone floor); resolves {@code wfmedical:empty}.
-     */
     private static final String TEMPLATE = "empty";
 
-    /**
-     * yBodyRot=0 is pinned on all rotation fields the classifier reads to guarantee determinism.
-     */
     private static ArmorStand victim(GameTestHelper helper) {
         ArmorStand stand = helper.spawn(EntityType.ARMOR_STAND, new BlockPos(1, 1, 1));
         stand.setNoGravity(true);
         stand.setYRot(0.0F);
-        // yBodyRot is the frame the classifier reads (HitGeometry reads this exact public field).
         stand.yBodyRot = 0.0F;
         stand.yBodyRotO = 0.0F;
         return stand;
     }
 
-    /**
-     * World-space Y for a given fraction of body height (0 = feet, 1 = crown).
-     */
     private static double yAt(AABB box, double relY) {
         return box.minY + relY * box.getYsize();
     }
@@ -54,11 +39,7 @@ public class HitLocationGameTest {
         helper.assertTrue(got == want, "expected " + want + " but got " + got);
     }
 
-    // --- frontal shots (ray travels -Z into the front face; nx = 0) -----------------------------
 
-    /**
-     * A centred frontal hit high on the box reads as HEAD.
-     */
     @GameTest(templateNamespace = WFMedical.MOD_ID, template = TEMPLATE)
     public void frontalHeadIsHead(GameTestHelper helper) {
         ArmorStand v = victim(helper);
@@ -72,9 +53,6 @@ public class HitLocationGameTest {
         helper.succeed();
     }
 
-    /**
-     * A centred frontal hit at mid height reads as TORSO.
-     */
     @GameTest(templateNamespace = WFMedical.MOD_ID, template = TEMPLATE)
     public void frontalTorsoIsTorso(GameTestHelper helper) {
         ArmorStand v = victim(helper);
@@ -88,9 +66,6 @@ public class HitLocationGameTest {
         helper.succeed();
     }
 
-    /**
-     * A centred frontal hit low on the box reads as a LEG (nx = 0 -> the right leg).
-     */
     @GameTest(templateNamespace = WFMedical.MOD_ID, template = TEMPLATE)
     public void lowFrontalIsLeg(GameTestHelper helper) {
         ArmorStand v = victim(helper);
@@ -104,12 +79,7 @@ public class HitLocationGameTest {
         helper.succeed();
     }
 
-    // --- side / directional shots ---------------------------------------------------------------
 
-    /**
-     * A torso-height ray entering the victim's RIGHT face (-X / west) reads as the RIGHT_ARM: it lands on
-     * the outer sliver of the box, which is arm territory when the victim is caught side-on.
-     */
     @GameTest(templateNamespace = WFMedical.MOD_ID, template = TEMPLATE)
     public void sideOnIsArm(GameTestHelper helper) {
         ArmorStand v = victim(helper);
@@ -123,11 +93,6 @@ public class HitLocationGameTest {
         helper.succeed();
     }
 
-    /**
-     * A blast arriving from the victim's LEFT (+X / east): the ray enters the +X face, so the entry maps to
-     * the victim's left side and reads as LEFT_ARM at torso height. Proves left/right discrimination is
-     * driven purely by the entry geometry.
-     */
     @GameTest(templateNamespace = WFMedical.MOD_ID, template = TEMPLATE)
     public void blastFromLeftIsLeftSide(GameTestHelper helper) {
         ArmorStand v = victim(helper);
@@ -141,20 +106,12 @@ public class HitLocationGameTest {
         helper.succeed();
     }
 
-    // --- fallback path --------------------------------------------------------------------------
 
-    /**
-     * A geometry-less source (generic damage: no attacker, no projectile, no source position) yields no
-     * reconstructable hit point, so {@link HitGeometry#classifyHit} returns null and
-     * {@link HitLocation#pick} must fall through to the weighted sampler and still return a (non-null)
-     * limb without throwing.
-     */
     @GameTest(templateNamespace = WFMedical.MOD_ID, template = TEMPLATE)
     public void geometrylessPickFallsBackToWeighted(GameTestHelper helper) {
         ArmorStand v = victim(helper);
         DamageSource generic = helper.getLevel().damageSources().generic();
 
-        // The geometric path cannot reconstruct a position -> null (this is what triggers the fallback).
         helper.assertTrue(HitGeometry.classifyHit(v, generic, DamageCategory.GENERIC) == null,
                 "generic damage must have no reconstructable hit point");
 

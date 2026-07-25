@@ -51,12 +51,6 @@ import net.minecraftforge.fml.common.Mod;
 
 import java.util.*;
 
-/**
- * Admin/debug command suite rooted at {@code /wfmedical} (alias {@code /wfmed}), permission level 2.
- * FORGE-bus only (server-authoritative). Each mutating subcommand calls {@link MedicalEngine#resync}
- * so derived stats, vanilla body, and the client snapshot all update immediately. Targets without a
- * medical capability are skipped with a warning; bad input reports failure and returns 0.
- */
 @Mod.EventBusSubscriber(modid = WFMedical.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class WFMedicalCommands {
 
@@ -72,7 +66,6 @@ public final class WFMedicalCommands {
     private static final SuggestionProvider<CommandSourceStack> HITBOX_AXIS_SUGGESTIONS =
             (ctx, b) -> SharedSuggestionProvider.suggest(
                     Arrays.stream(RigTuning.EnvAxis.VALUES).map(RigTuning.EnvAxis::lower), b);
-    // Only the real actions are tunable; NONE is the stance base (tuned via the plain 'hitbox set').
     private static final SuggestionProvider<CommandSourceStack> HITBOX_HAND_SUGGESTIONS =
             (ctx, b) -> SharedSuggestionProvider.suggest(
                     Arrays.stream(RigTuning.HandAction.VALUES)
@@ -82,7 +75,6 @@ public final class WFMedicalCommands {
             (ctx, b) -> SharedSuggestionProvider.suggest(
                     Arrays.stream(LimbType.VALUES).filter(LimbType::isArm).map(Enum::name), b);
 
-    // ------------------------------------------------------------------ suggestion providers
     private static final SuggestionProvider<CommandSourceStack> TRAUMA_SUGGESTIONS =
             (ctx, b) -> SharedSuggestionProvider.suggest(
                     TraumaRegistry.active().all().stream().map(TraumaType::getId), b);
@@ -95,7 +87,6 @@ public final class WFMedicalCommands {
     private WFMedicalCommands() {
     }
 
-    // ------------------------------------------------------------------ registration
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -106,37 +97,31 @@ public final class WFMedicalCommands {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("wfmedical")
                 .requires(src -> src.hasPermission(2));
 
-        // --- query [targets]
         root.then(Commands.literal("query")
                 .executes(ctx -> cmdQuery(ctx.getSource(), self(ctx)))
                 .then(Commands.argument("targets", EntityArgument.players())
                         .executes(ctx -> cmdQuery(ctx.getSource(), players(ctx)))));
 
-        // --- heal [targets]
         root.then(Commands.literal("heal")
                 .executes(ctx -> cmdHeal(ctx.getSource(), self(ctx)))
                 .then(Commands.argument("targets", EntityArgument.players())
                         .executes(ctx -> cmdHeal(ctx.getSource(), players(ctx)))));
 
-        // --- reset [targets]
         root.then(Commands.literal("reset")
                 .executes(ctx -> cmdReset(ctx.getSource(), self(ctx)))
                 .then(Commands.argument("targets", EntityArgument.players())
                         .executes(ctx -> cmdReset(ctx.getSource(), players(ctx)))));
 
-        // --- kill [targets]
         root.then(Commands.literal("kill")
                 .executes(ctx -> cmdKill(ctx.getSource(), self(ctx)))
                 .then(Commands.argument("targets", EntityArgument.players())
                         .executes(ctx -> cmdKill(ctx.getSource(), players(ctx)))));
 
-        // --- revive [targets]
         root.then(Commands.literal("revive")
                 .executes(ctx -> cmdRevive(ctx.getSource(), self(ctx)))
                 .then(Commands.argument("targets", EntityArgument.players())
                         .executes(ctx -> cmdRevive(ctx.getSource(), players(ctx)))));
 
-        // --- trauma add|remove|clear
         root.then(Commands.literal("trauma")
                 .then(Commands.literal("add")
                         .then(Commands.argument("targets", EntityArgument.players())
@@ -170,7 +155,6 @@ public final class WFMedicalCommands {
                                         .executes(ctx -> cmdTraumaClear(ctx.getSource(), players(ctx),
                                                 StringArgumentType.getString(ctx, "limb")))))));
 
-        // --- blood set|add
         root.then(Commands.literal("blood")
                 .then(Commands.literal("set")
                         .then(Commands.argument("targets", EntityArgument.players())
@@ -183,7 +167,6 @@ public final class WFMedicalCommands {
                                         .executes(ctx -> cmdBlood(ctx.getSource(), players(ctx),
                                                 DoubleArgumentType.getDouble(ctx, "ml"), true))))));
 
-        // --- suppression set|clear
         root.then(Commands.literal("suppression")
                 .then(Commands.literal("set")
                         .then(Commands.argument("targets", EntityArgument.players())
@@ -194,7 +177,6 @@ public final class WFMedicalCommands {
                         .then(Commands.argument("targets", EntityArgument.players())
                                 .executes(ctx -> cmdSuppression(ctx.getSource(), players(ctx), 0.0F)))));
 
-        // --- drug set|add|clear
         root.then(Commands.literal("drug")
                 .then(Commands.literal("set")
                         .then(Commands.argument("targets", EntityArgument.players())
@@ -210,7 +192,6 @@ public final class WFMedicalCommands {
                         .then(Commands.argument("targets", EntityArgument.players())
                                 .executes(ctx -> cmdDrug(ctx.getSource(), players(ctx), 0.0F, DrugMode.CLEAR)))));
 
-        // --- substance <targets> <substanceId>
         root.then(Commands.literal("substance")
                 .then(Commands.argument("targets", EntityArgument.players())
                         .then(Commands.argument("substanceId", StringArgumentType.word())
@@ -218,11 +199,6 @@ public final class WFMedicalCommands {
                                 .executes(ctx -> cmdSubstance(ctx.getSource(), players(ctx),
                                         StringArgumentType.getString(ctx, "substanceId"))))));
 
-        // --- unconscious <targets> [ticks]
-        //   Replaces the removed `bleedout` and `overdose` subcommands with a single command for the one
-        //   unified UNCONSCIOUS state, exposing both of its internal causes:
-        //     no ticks   -> bleed-out unconscious (death timer runs)      -- the old bleed-out cause
-        //     with ticks -> timed overdose unconscious (wake timer runs)  -- the old overdose cause
         root.then(Commands.literal("unconscious")
                 .then(Commands.argument("targets", EntityArgument.players())
                         .executes(ctx -> cmdUnconscious(ctx.getSource(), players(ctx), -1))
@@ -230,12 +206,10 @@ public final class WFMedicalCommands {
                                 .executes(ctx -> cmdUnconscious(ctx.getSource(), players(ctx),
                                         IntegerArgumentType.getInteger(ctx, "ticks"))))));
 
-        // --- asphyxia <targets>
         root.then(Commands.literal("asphyxia")
                 .then(Commands.argument("targets", EntityArgument.players())
                         .executes(ctx -> cmdAsphyxia(ctx.getSource(), players(ctx)))));
 
-        // --- state <targets> <state>
         root.then(Commands.literal("state")
                 .then(Commands.argument("targets", EntityArgument.players())
                         .then(Commands.argument("state", StringArgumentType.word())
@@ -243,7 +217,6 @@ public final class WFMedicalCommands {
                                 .executes(ctx -> cmdState(ctx.getSource(), players(ctx),
                                         StringArgumentType.getString(ctx, "state"))))));
 
-        // --- fracture <targets> <limb>
         root.then(Commands.literal("fracture")
                 .then(Commands.argument("targets", EntityArgument.players())
                         .then(Commands.argument("limb", StringArgumentType.word())
@@ -251,7 +224,6 @@ public final class WFMedicalCommands {
                                 .executes(ctx -> cmdFracture(ctx.getSource(), players(ctx),
                                         StringArgumentType.getString(ctx, "limb"))))));
 
-        // --- bleed <targets> <limb> [severity]
         root.then(Commands.literal("bleed")
                 .then(Commands.argument("targets", EntityArgument.players())
                         .then(Commands.argument("limb", StringArgumentType.word())
@@ -263,30 +235,18 @@ public final class WFMedicalCommands {
                                                 StringArgumentType.getString(ctx, "limb"),
                                                 FloatArgumentType.getFloat(ctx, "severity")))))));
 
-        // --- hittest [maxDist]
-        //   Debug look-test: ray-cast from the caller's eye and classify the aimed-at entity's limb via
-        //   HitGeometry.classifyRay. Read-only, op-gated (inherited from root), server-authoritative.
         root.then(Commands.literal("hittest")
                 .executes(ctx -> cmdHitTest(ctx.getSource(), 0.0D))
                 .then(Commands.argument("maxDist", DoubleArgumentType.doubleArg(0.0D))
                         .executes(ctx -> cmdHitTest(ctx.getSource(),
                                 DoubleArgumentType.getDouble(ctx, "maxDist")))));
 
-        // --- rig [maxDist]
-        //   Debug Tier-2 rig dump: ray-cast from the caller's eye and, for the aimed-at LivingEntity, dump
-        //   the six posed limb OBBs (limb, entity-local centre, half-extents) from HumanoidRig.compute plus
-        //   the LimbType that HitGeometry.classifyRay resolves for the caller's aim ray. Read-only, op-gated
-        //   (inherited from root), server-authoritative.
         root.then(Commands.literal("rig")
                 .executes(ctx -> cmdRig(ctx.getSource(), 0.0D))
                 .then(Commands.argument("maxDist", DoubleArgumentType.doubleArg(0.0D))
                         .executes(ctx -> cmdRig(ctx.getSource(),
                                 DoubleArgumentType.getDouble(ctx, "maxDist")))));
 
-        // --- hitbox debug|status|show|export|set|add|reset
-        //   Live per-pose tuning of the rigged limb OBBs (position + size, model units) for extracting exact
-        //   hitbox values in test mode. Standing / crouching / prone / downed each tune independently. All
-        //   op-gated (inherited); mutators apply only while hitboxDebug is active.
         root.then(Commands.literal("hitbox")
                 .executes(ctx -> cmdHitboxStatus(ctx.getSource()))
                 .then(Commands.literal("status").executes(ctx -> cmdHitboxStatus(ctx.getSource())))
@@ -345,8 +305,6 @@ public final class WFMedicalCommands {
                                         .executes(ctx -> cmdHitboxReset(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "pose"),
                                                 StringArgumentType.getString(ctx, "limb"))))))
-                // --- envelope: per-stance broad-phase box reach (blocks). set/add/reset the horizontal/vertical
-                //     margin; applies live while 'debug on', bake with 'export'.
                 .then(Commands.literal("envelope")
                         .then(Commands.literal("set")
                                 .then(Commands.argument("pose", StringArgumentType.word())
@@ -370,8 +328,6 @@ public final class WFMedicalCommands {
                                                                 DoubleArgumentType.getDouble(ctx, "amount")))))))
                         .then(Commands.literal("reset")
                                 .executes(ctx -> cmdHitboxEnvReset(ctx.getSource()))))
-                // --- hand: per-(stance, hand-action) ARM overlay (aiming bow / holding gun / blocking), added
-                //     on top of the stance deltas when that action is active. Arms only.
                 .then(Commands.literal("hand")
                         .then(Commands.literal("set")
                                 .then(Commands.argument("pose", StringArgumentType.word())
@@ -424,7 +380,6 @@ public final class WFMedicalCommands {
         dispatcher.register(Commands.literal("wfmed").requires(src -> src.hasPermission(2)).redirect(node));
     }
 
-    // ------------------------------------------------------------------ target resolution helpers
 
     private static Collection<ServerPlayer> self(CommandContext<CommandSourceStack> ctx)
             throws CommandSyntaxException {
@@ -436,11 +391,7 @@ public final class WFMedicalCommands {
         return EntityArgument.getPlayers(ctx, "targets");
     }
 
-    // ------------------------------------------------------------------ subcommand implementations
 
-    /**
-     * Dump the full medical state for each target (read-only; recomputes but does NOT resync).
-     */
     private static int cmdQuery(CommandSourceStack src, Collection<ServerPlayer> targets) {
         int count = 0;
         for (ServerPlayer p : targets) {
@@ -458,10 +409,6 @@ public final class WFMedicalCommands {
         return count;
     }
 
-    /**
-     * Debug look-test for the geometric hit-location classifier. Ray-casts from the executor's eye, finds
-     * the nearest aimed-at {@link LivingEntity}, and reports the classified {@link LimbType}. Read-only.
-     */
     private static int cmdHitTest(CommandSourceStack src, double maxDist) throws CommandSyntaxException {
         ServerPlayer self = src.getPlayerOrException();
         double reach = maxDist > 0.0D ? maxDist : 5.0D;
@@ -469,7 +416,6 @@ public final class WFMedicalCommands {
         Vec3 eye = self.getEyePosition(1.0F);
         Vec3 look = self.getViewVector(1.0F);
         Vec3 end = eye.add(look.scale(reach));
-        // Nearest LivingEntity crossed by the eye->end segment (self excluded).
         AABB search = self.getBoundingBox().expandTowards(look.scale(reach)).inflate(1.0D);
         EntityHitResult result = ProjectileUtil.getEntityHitResult(self.level(), self, eye, end, search,
                 e -> e instanceof LivingEntity && e != self && e.isPickable());
@@ -493,9 +439,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Debug dump of the Tier-2 humanoid rig OBBs for the aimed-at entity. Read-only.
-     */
     private static int cmdRig(CommandSourceStack src, double maxDist) throws CommandSyntaxException {
         ServerPlayer self = src.getPlayerOrException();
         double reach = maxDist > 0.0D ? maxDist : 5.0D;
@@ -503,7 +446,6 @@ public final class WFMedicalCommands {
         Vec3 eye = self.getEyePosition(1.0F);
         Vec3 look = self.getViewVector(1.0F);
         Vec3 end = eye.add(look.scale(reach));
-        // Nearest LivingEntity crossed by the eye->end segment (self excluded).
         AABB search = self.getBoundingBox().expandTowards(look.scale(reach)).inflate(1.0D);
         EntityHitResult result = ProjectileUtil.getEntityHitResult(self.level(), self, eye, end, search,
                 e -> e instanceof LivingEntity && e != self && e.isPickable());
@@ -537,11 +479,7 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    // ------------------------------------------------------------------ hitbox tuning (debug/test)
 
-    /**
-     * Report whether hitbox tuning is armed and summarise active deltas per pose.
-     */
     private static int cmdHitboxStatus(CommandSourceStack src) {
         boolean cfg = MedicalConfig.hitboxDebug();
         boolean active = RigTuning.ACTIVE;
@@ -567,9 +505,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Arm/disarm the tuning hot-path flag for this session (does not rewrite the config).
-     */
     private static int cmdHitboxDebug(CommandSourceStack src, boolean enable) {
         RigTuning.ACTIVE = enable;
         src.sendSuccess(() -> Component.literal("[wfmedical] hitbox tuning "
@@ -579,9 +514,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Set one pose/limb/field delta to an absolute value (model units, 1/16 block).
-     */
     private static int cmdHitboxSet(CommandSourceStack src, String poseName, String limbName,
                                     String fieldName, double value) {
         RigTuning.RigPose pose = parsePose(src, poseName);
@@ -596,9 +528,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Nudge one pose/limb/field delta by an amount (model units); prints the resulting delta.
-     */
     private static int cmdHitboxAdd(CommandSourceStack src, String poseName, String limbName,
                                     String fieldName, double amount) {
         RigTuning.RigPose pose = parsePose(src, poseName);
@@ -614,9 +543,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Clear all deltas, one pose's, or one pose/limb's, depending on which args are given.
-     */
     private static int cmdHitboxReset(CommandSourceStack src, String poseName, String limbName) {
         if (poseName == null) {
             RigTuning.reset();
@@ -643,10 +569,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Dump the effective (base + pose adjust + delta) box spec per limb for one pose, or every pose when
-     * {@code poseName} is null.
-     */
     private static int cmdHitboxShow(CommandSourceStack src, String poseName) {
         RigTuning.RigPose only = null;
         if (poseName != null) {
@@ -684,7 +606,6 @@ public final class WFMedicalCommands {
                         .append(" p=(").append(num(eff[6])).append(", ").append(num(eff[7])).append(", ").append(num(eff[8])).append(")")
                         .append(deltas.length() > 0 ? "  Δ" + deltas : "");
             }
-            // Hand-action ARM overlays for this stance (only the arms + actions that carry any adjustment).
             for (RigTuning.HandAction action : RigTuning.HandAction.VALUES) {
                 if (action == RigTuning.HandAction.NONE) {
                     continue;
@@ -714,11 +635,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Print paste-ready source for the tuned values: STANDING bakes into {@code HumanoidRig.base()}; the other
-     * poses bake into {@code HumanoidRig.poseAdjust()}. Dumps one pose, or every pose when {@code poseName} is
-     * null.
-     */
     private static int cmdHitboxExport(CommandSourceStack src, String poseName) {
         RigTuning.RigPose only = null;
         if (poseName != null) {
@@ -767,7 +683,6 @@ public final class WFMedicalCommands {
                 }
             }
         }
-        // Per-(stance, hand-action) arm overlays -> paste into HumanoidRig.handAdjust().
         StringBuilder hand = new StringBuilder();
         for (RigTuning.RigPose pose : RigTuning.RigPose.VALUES) {
             if (only != null && pose != only) {
@@ -803,7 +718,6 @@ public final class WFMedicalCommands {
         if (hand.length() > 0) {
             sb.append("\n// hand-action arm overlays -> paste into HumanoidRig.handAdjust():").append(hand);
         }
-        // Per-stance envelope reach -> config [hitregistration.envelopeReach] (TOML keys).
         sb.append("\n// envelope reach -> config [hitregistration.envelopeReach]:");
         for (RigTuning.RigPose pose : RigTuning.RigPose.VALUES) {
             if (only != null && pose != only) {
@@ -819,11 +733,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Persist the current effective hitbox geometry (base + all folded tuning deltas) to the data file
-     * {@code config/wfmedical_hitbox_rig.json}, apply it live, and clear the now-baked deltas so the boxes are
-     * not doubled. The file reloads automatically on server start / config reload &mdash; no recompile needed.
-     */
     private static int cmdHitboxExportFile(CommandSourceStack src) {
         RigSpec spec = RigSpecIO.effectiveSpec();
         java.nio.file.Path file;
@@ -833,8 +742,6 @@ public final class WFMedicalCommands {
             src.sendFailure(Component.literal("[wfmedical] hitbox export file FAILED: " + e.getMessage()));
             return 0;
         }
-        // Apply the written geometry live and clear the now-baked tuning deltas (stance + hand) so part()
-        // does not add them a second time on top of the new baseline.
         HumanoidRig.setSpec(spec);
         RigTuning.reset();
         for (RigTuning.RigPose pose : RigTuning.RigPose.VALUES) {
@@ -851,9 +758,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Append the nine field values (index 0..8) produced by {@code cell} as a comma-separated {@code num} row.
-     */
     private static void appendRow(StringBuilder sb, java.util.function.IntToDoubleFunction cell) {
         for (int i = 0; i < RigTuning.FIELDS; i++) {
             if (i > 0) {
@@ -904,9 +808,6 @@ public final class WFMedicalCommands {
         return h;
     }
 
-    /**
-     * Parse an ARM limb (the hand overlay only applies to arms).
-     */
     private static LimbType parseArm(CommandSourceStack src, String name) {
         LimbType limb = parseLimb(src, name);
         if (limb != null && !limb.isArm()) {
@@ -917,9 +818,6 @@ public final class WFMedicalCommands {
         return limb;
     }
 
-    /**
-     * Set one (stance, hand-action, arm)/field overlay delta to an absolute value (model units).
-     */
     private static int cmdHitboxHandSet(CommandSourceStack src, String poseName, String actionName,
                                         String armName, String fieldName, double value) {
         RigTuning.RigPose pose = parsePose(src, poseName);
@@ -935,9 +833,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Nudge one (stance, hand-action, arm)/field overlay delta by an amount (model units).
-     */
     private static int cmdHitboxHandAdd(CommandSourceStack src, String poseName, String actionName,
                                         String armName, String fieldName, double amount) {
         RigTuning.RigPose pose = parsePose(src, poseName);
@@ -954,9 +849,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Clear the hand overlay for a (stance, action), or a single arm within it.
-     */
     private static int cmdHitboxHandReset(CommandSourceStack src, String poseName, String actionName, String armName) {
         RigTuning.RigPose pose = parsePose(src, poseName);
         RigTuning.HandAction action = parseHandAction(src, actionName);
@@ -979,9 +871,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Set one stance's envelope reach (blocks) on an axis.
-     */
     private static int cmdHitboxEnvSet(CommandSourceStack src, String poseName, String axisName, double value) {
         RigTuning.RigPose pose = parsePose(src, poseName);
         RigTuning.EnvAxis axis = parseAxis(src, axisName);
@@ -994,9 +883,6 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Nudge one stance's envelope reach (blocks) on an axis; clamped at 0.
-     */
     private static int cmdHitboxEnvAdd(CommandSourceStack src, String poseName, String axisName, double amount) {
         RigTuning.RigPose pose = parsePose(src, poseName);
         RigTuning.EnvAxis axis = parseAxis(src, axisName);
@@ -1009,18 +895,12 @@ public final class WFMedicalCommands {
         return 1;
     }
 
-    /**
-     * Reset every stance's envelope reach back to the config values.
-     */
     private static int cmdHitboxEnvReset(CommandSourceStack src) {
         RigTuning.seedEnvelope(MedicalConfig.envelopeReachSnapshot());
         src.sendSuccess(() -> Component.literal("[wfmedical] envelope reach reset to the config values."), false);
         return 1;
     }
 
-    /**
-     * Compact double -> string: whole numbers print without a fractional part (e.g. {@code 8}, {@code -1.9}).
-     */
     private static String num(double v) {
         String s = Double.toString(v);
         if (s.endsWith(".0")) {
@@ -1029,9 +909,6 @@ public final class WFMedicalCommands {
         return s;
     }
 
-    /**
-     * Full heal: clear all trauma, top up blood, drop pain/drug/overdose/bleed-out, back to full health.
-     */
     private static int cmdHeal(CommandSourceStack src, Collection<ServerPlayer> targets) {
         int n = forEach(src, targets, (s, p, data, profile) -> {
             clearAllTrauma(profile);
@@ -1058,16 +935,9 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Replace the profile with a pristine default, then resync to full derived health.
-     */
     private static int cmdReset(CommandSourceStack src, Collection<ServerPlayer> targets) {
         int n = forEach(src, targets, (s, p, data, profile) -> {
             MedicalProfile fresh = new MedicalProfile(MedicalConfig.maxBloodMl());
-            // Carry the last broadcast-downed mirror onto the fresh profile so the resync's edge-detection
-            // sees the true->false transition and pushes a downed=false packet. Without this, a player who
-            // was bleeding out / overdose-unconscious when reset would keep a stale downed pose on all trackers (the
-            // fresh profile's mirror defaults to false, matching the now-false state, so nothing is sent).
             fresh.setLastBroadcastDowned(profile.isLastBroadcastDowned());
             data.setProfile(fresh);
             data.bumpRevision();
@@ -1078,10 +948,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Kill each target regardless of bleed-out. Marks the profile DEAD so the bleed-out interception stands
-     * down, then routes through {@code p.kill()} (genericKill, bypasses invulnerability, invokes die()).
-     */
     private static int cmdKill(CommandSourceStack src, Collection<ServerPlayer> targets) {
         int n = forEach(src, targets, (s, p, data, profile) -> {
             profile.setOverdoseUnconscious(false);
@@ -1098,26 +964,19 @@ public final class WFMedicalCommands {
             }
             profile.markDirty();
             data.bumpRevision();
-            p.kill(); // hurt(genericKill, MAX) -> die(); bypasses the bleed-out interception via the /kill fix.
+            p.kill();
             return true;
         });
         src.sendSuccess(() -> Component.literal("[wfmedical] Killed " + n + " player(s)."), true);
         return n;
     }
 
-    /**
-     * Bring a downed player back up by reversing the lethal CAUSE before resyncing (just flipping transient
-     * downed flags would be re-derived back to UNCONSCIOUS immediately). Clears forced overrides, overdose
-     * markers, major trauma (leaves minor wounds), and tops blood above the low threshold. Never resurrects
-     * a dead/removed entity.
-     */
     private static int cmdRevive(CommandSourceStack src, Collection<ServerPlayer> targets) {
         int n = forEach(src, targets, (s, p, data, profile) -> {
             if (!p.isAlive() || p.isRemoved()) {
                 src.sendFailure(Component.literal("[wfmedical] " + name(p) + " is not alive; cannot revive."));
                 return false;
             }
-            // Clear every downed CAUSE, not just the state label.
             profile.setForcedState(null);
             profile.setState(HealthState.HEALTHY);
             profile.setBleedoutSinceTick(-1L);
@@ -1125,12 +984,9 @@ public final class WFMedicalCommands {
             profile.setOverdoseUntilTick(0L);
             profile.clearAsphyxia();
             profile.setBlackoutGraceUntil(0L);
-            profile.setUnconsciousLatched(false); // release the wake latch so the revive is not re-derived UNCONSCIOUS
-            profile.setDrugLoad(0.0F); // otherwise a severe overdose would immediately re-knock-out on the next pass
-            // Evacuate the life-threatening trauma that drives effectiveMaxHealth to 0 (major wounds only;
-            // minor scratches are left in place so this stays a revive, not a full heal).
+            profile.setUnconsciousLatched(false);
+            profile.setDrugLoad(0.0F);
             clearMajorTrauma(profile);
-            // Top blood above the low-penalty threshold so blood loss no longer forces lethal/critical.
             double safeBlood = MedicalConfig.bloodLowFraction() * profile.getMaxBloodMl();
             if (profile.getBloodMl() < safeBlood) {
                 profile.setBloodMl(safeBlood);
@@ -1148,9 +1004,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Add a trauma of the given registry id to a limb (severity optional, default = base contribution).
-     */
     private static int cmdTraumaAdd(CommandSourceStack src, Collection<ServerPlayer> targets,
                                     String limbName, String traumaId, float severity) {
         LimbType limb = parseLimb(src, limbName);
@@ -1175,9 +1028,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Remove the first trauma matching the id on a limb.
-     */
     private static int cmdTraumaRemove(CommandSourceStack src, Collection<ServerPlayer> targets,
                                        String limbName, String traumaId) {
         LimbType limb = parseLimb(src, limbName);
@@ -1206,9 +1056,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Clear all trauma on one limb, or on every limb when {@code limbName} is null.
-     */
     private static int cmdTraumaClear(CommandSourceStack src, Collection<ServerPlayer> targets, String limbName) {
         final LimbType only;
         if (limbName != null) {
@@ -1258,10 +1105,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Set/add/clear drug load. When load crosses the lethal threshold an unconsciousness is forced immediately
-     * (otherwise the engine would only trigger it on the next physiology pass).
-     */
     private static int cmdDrug(CommandSourceStack src, Collection<ServerPlayer> targets, float load, DrugMode mode) {
         int n = forEach(src, targets, (s, p, data, profile) -> {
             float next = switch (mode) {
@@ -1291,9 +1134,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Inject a registered substance directly, exercising the full opioid / overdose / antidote path.
-     */
     private static int cmdSubstance(CommandSourceStack src, Collection<ServerPlayer> targets, String substanceId) {
         Substance substance = resolveSubstance(substanceId);
         if (substance == null) {
@@ -1302,7 +1142,6 @@ public final class WFMedicalCommands {
         }
         int n = forEach(src, targets, (s, p, data, profile) -> {
             boolean injected = SubstanceService.inject(p, substance);
-            // Reconcile the downed broadcast (an overdose unconsciousness may have started) and re-push the snapshot.
             MedicalEngine.resync(p);
             return injected;
         });
@@ -1311,12 +1150,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Force the unified {@link HealthState#UNCONSCIOUS} state via one of its two internal causes:
-     * no-arg = bleed-out cause (admin-forced override, held until cleared); any {@code ticks} arg = overdose
-     * cause – the player is latched unconscious and comes to on their own via the engine's wake roll once
-     * their wakeup score is low (the {@code ticks} value is legacy and no longer sets a fixed wake time).
-     */
     private static int cmdUnconscious(CommandSourceStack src, Collection<ServerPlayer> targets, int ticks) {
         boolean timed = ticks >= 1;
         int n = forEach(src, targets, (s, p, data, profile) -> {
@@ -1336,10 +1169,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Force the ASPHYXIA phase for testing. Raises drug load to at least the asphyxia threshold so the
-     * cause stays active; drains air each tick, passes the player out, and kills if untreated.
-     */
     private static int cmdAsphyxia(CommandSourceStack src, Collection<ServerPlayer> targets) {
         int n = forEach(src, targets, (s, p, data, profile) -> {
             if (!MedicalConfig.asphyxiaEnabled()) {
@@ -1361,9 +1190,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Set the {@link HealthState} directly; DEAD routes through the proper kill semantics.
-     */
     private static int cmdState(CommandSourceStack src, Collection<ServerPlayer> targets, String stateName) {
         HealthState state = parseState(src, stateName);
         if (state == null) {
@@ -1374,18 +1200,11 @@ public final class WFMedicalCommands {
         }
         final HealthState target = state;
         int n = forEach(src, targets, (s, p, data, profile) -> {
-            // An authoritative /state overrides the wake latch (an UNCONSCIOUS target re-pins via forcedState
-            // below, which the engine leaves unlatched so the operator keeps control).
             profile.setUnconsciousLatched(false);
             profile.setBlackoutGraceUntil(0L);
-            // Pin a non-HEALTHY target through the forced-state override so the resync's recompute cannot
-            // clobber it back to the physiology-derived state; HEALTHY clears any prior override so the
-            // player returns to their real derived condition.
             profile.setForcedState(target == HealthState.HEALTHY ? null : target);
             profile.setState(target);
             if (target == HealthState.UNCONSCIOUS) {
-                // Forcing UNCONSCIOUS via /state is treated as a bleed-out cause (set the bleed-out marker so
-                // the engine's death timer runs), matching the dedicated /unconscious subcommand.
                 profile.setBleedoutSinceTick(p.level().getGameTime());
             } else {
                 profile.setBleedoutSinceTick(-1L);
@@ -1404,9 +1223,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Convenience: add the fracture trauma to a limb (requires the fracture feature enabled).
-     */
     private static int cmdFracture(CommandSourceStack src, Collection<ServerPlayer> targets, String limbName) {
         if (!MedicalConfig.enableFractures()) {
             src.sendFailure(Component.literal("[wfmedical] Fractures are disabled in the config."));
@@ -1420,9 +1236,6 @@ public final class WFMedicalCommands {
         return addTraumaConvenience(src, targets, limbName, type, "Fractured");
     }
 
-    /**
-     * Convenience: add a bleeding laceration trauma to a limb.
-     */
     private static int cmdBleed(CommandSourceStack src, Collection<ServerPlayer> targets,
                                 String limbName, float severity) {
         TraumaType type = resolveTrauma("laceration", TraumaCategory.LACERATION);
@@ -1447,9 +1260,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Resolves capability once per player, skips those without it, swallows per-player errors.
-     */
     private static int forEach(CommandSourceStack src, Collection<ServerPlayer> targets, ProfileAction action) {
         int count = 0;
         for (ServerPlayer p : targets) {
@@ -1469,7 +1279,6 @@ public final class WFMedicalCommands {
         return count;
     }
 
-    // ------------------------------------------------------------------ shared internals
 
     private static int addTraumaConvenience(CommandSourceStack src, Collection<ServerPlayer> targets,
                                             String limbName, TraumaType type, String verb) {
@@ -1489,11 +1298,6 @@ public final class WFMedicalCommands {
         return n;
     }
 
-    /**
-     * Remove every MAJOR trauma across all limbs (the wounds that reduce effective max health and bleed
-     * heavily), leaving minor trauma untouched. Used by {@link #cmdRevive} to lift the lethal condition
-     * driving a bleed-out unconsciousness without performing a full heal.
-     */
     private static void clearMajorTrauma(MedicalProfile profile) {
         for (LimbType lt : LimbType.VALUES) {
             Limb limb = profile.limb(lt);
@@ -1583,9 +1387,6 @@ public final class WFMedicalCommands {
         return String.format(java.util.Locale.ROOT, "%.2f", v);
     }
 
-    /**
-     * Build the multi-line debug dump for one player.
-     */
     private static String buildDump(ServerPlayer p, MedicalProfile profile, DerivedStats stats) {
         long now = p.level().getGameTime();
         StringBuilder sb = new StringBuilder();
@@ -1605,9 +1406,6 @@ public final class WFMedicalCommands {
                 .append("  since=").append(profile.getPainKoSince() > 0L ? (now - profile.getPainKoSince()) + "t" : "-");
         sb.append("\n state: ").append(profile.getState())
                 .append("  isDowned: ").append(profile.isDowned());
-        // Unified unconsciousness line: one externally-visible UNCONSCIOUS state, with an internal cause hint.
-        // A latched player comes to via the wake ROLL once their wakeup score falls to the threshold; asphyxia
-        // keeps a hard death timer while the cause is active.
         if (profile.getState() == HealthState.UNCONSCIOUS) {
             double wake = MedicalEngine.wakeupScore(profile, stats);
             double thr = MedicalConfig.wakeupScoreThreshold();
@@ -1623,11 +1421,9 @@ public final class WFMedicalCommands {
                 sb.append("\n unconscious: cause=bleed-out").append(wakeInfo);
             }
         } else if (profile.getBlackoutGraceUntil() > 0L) {
-            // Conscious, resisting: the short blackout grace before a drug KO commits.
             sb.append("\n blackout grace: ").append(Math.max(0L, profile.getBlackoutGraceUntil() - now))
                     .append("t until KO (sealed – antidote no longer prevents it)");
         } else if (profile.isAsphyxiating()) {
-            // Conscious asphyxia struggle (drowning or drug respiratory depression); passes out then kills.
             long outIn = Math.max(0L, (profile.getAsphyxiaSince()
                     + MedicalConfig.asphyxiaStruggleTicks() + MedicalConfig.blackoutGraceTicks()) - now);
             sb.append("\n asphyxia: struggling  air ").append(p.getAirSupply()).append(" / ")

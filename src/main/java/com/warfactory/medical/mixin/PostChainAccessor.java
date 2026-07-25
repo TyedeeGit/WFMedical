@@ -7,11 +7,6 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.List;
 
-/**
- * Exposes the private {@link PostChain#passes} list so the blood-loss desaturation driver can push a
- * per-frame {@code Saturation} uniform. Safe to set on all passes because {@code safeGetUniform} returns
- * a dummy for passes that do not declare the uniform.
- */
 @Mixin(PostChain.class)
 public interface PostChainAccessor {
 

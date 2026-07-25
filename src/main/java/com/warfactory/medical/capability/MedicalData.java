@@ -4,10 +4,6 @@ import com.warfactory.medical.core.MedicalProfile;
 import com.warfactory.medical.core.trauma.TraumaRegistry;
 import net.minecraft.nbt.CompoundTag;
 
-/**
- * Default {@link IMedicalData} implementation: wraps a single {@link MedicalProfile} and tracks the
- * revision counters used for delta sync.
- */
 public final class MedicalData implements IMedicalData {
 
     private MedicalProfile profile = new MedicalProfile();
@@ -71,7 +67,6 @@ public final class MedicalData implements IMedicalData {
         }
         this.profile = loaded;
         this.revision = tag.getInt("Revision");
-        // Force a re-sync to any watching client after a load.
         this.lastSyncedRevision = -1;
     }
 }

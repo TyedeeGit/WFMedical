@@ -10,16 +10,6 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
 
-/**
- * POSE stream, client -> server, for {@link HitAuthority#CLIENT_HINT}. The victim's client sends its own
- * posed {@link HumanoidRig.LocalRig} (six entity-local OBBs) so the server can skip the costly rebuild and
- * classify the hit against the supplied pose.
- *
- * <p>The six boxes travel in the fixed {@link HumanoidRig.LocalRig.Slot} order and carry <b>no</b> limb tag
- * &mdash; the server assigns each slot's {@link LimbType} itself, so a tampered client cannot mislabel which
- * box is which. The centre/axes/half it sends are still bounded by {@link RigCache}'s validation, and the
- * ray test remains the server's: the victim only vouches for its own pose, never the hit outcome.</p>
- */
 public record PoseStreamPacket(HumanoidRig.LocalRig rig) {
 
     public static PoseStreamPacket decode(FriendlyByteBuf buf) {
@@ -63,10 +53,6 @@ public record PoseStreamPacket(HumanoidRig.LocalRig rig) {
         return new Vec3(buf.readFloat(), buf.readFloat(), buf.readFloat());
     }
 
-    /**
-     * Server-thread handler: record the sender's own streamed pose, but only while the server actually wants
-     * hints (ignore any unsolicited pose when neither CLIENT_HINT authority nor animatedHitboxes is on).
-     */
     public void handleServer(ServerPlayer sender) {
         if (sender == null || !MedicalConfig.useClientPose()) {
             return;

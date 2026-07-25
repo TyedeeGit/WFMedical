@@ -6,42 +6,14 @@ import com.warfactory.medical.core.limb.LimbType;
 import com.warfactory.medical.network.MedicalSyncPacket.LimbSummary;
 import net.minecraft.network.FriendlyByteBuf;
 
-/**
- * INCREMENTAL medical update, server -> client. Carries only the components of a {@link MedicalSyncPacket}
- * that CHANGED since the last snapshot sent to that client, selected by a bitmask, and is applied on top of
- * the client's cached baseline ({@link #applyTo}). The baseline itself is a full {@link MedicalSyncPacket}
- * (sent on login / respawn), so a delta always has something to patch.
- *
- * <p>Because {@code DerivedStats} is a global aggregate it usually changes on any update, but the six per-limb
- * summaries (the bulk of the payload) rarely all change at once, so a delta typically ships one limb instead
- * of six. The reliable ordered channel (SimpleChannel over the connection) guarantees deltas apply in order to
- * a matching baseline, so no acknowledgement is needed.</p>
- *
- * <p>{@code limbs} is a sparse array the length of the full limb set: an entry is non-null exactly when its
- * bit is set in {@code mask}. The (de)serialization reuses {@link MedicalSyncPacket}'s shared component
- * helpers so the wire format stays identical to the full packet's.</p>
- */
 public record MedicalDeltaPacket(int mask, DerivedStats stats, LimbSummary[] limbs, double bloodMl,
                                  double maxBloodMl, float painSuppression, float drugLoad, HealthState state,
                                  float deathProgress) {
 
-    /**
-     * {@code DerivedStats} changed.
-     */
     private static final int STATS = 1;
-    /**
-     * Any of the top-level scalars (blood, painSuppression, drugLoad, state, deathProgress) changed.
-     */
     private static final int SCALARS = 1 << 1;
-    /**
-     * Base bit for limb {@code i}: {@code LIMB_BASE << i}.
-     */
     private static final int LIMB_BASE = 1 << 2;
 
-    /**
-     * Build the delta from {@code prev} (what the client already has) to {@code cur} (the new snapshot). An
-     * empty result ({@link #isEmpty()}) means nothing observable changed.
-     */
     public static MedicalDeltaPacket diff(MedicalSyncPacket prev, MedicalSyncPacket cur) {
         int mask = 0;
         DerivedStats stats = null;
@@ -95,16 +67,10 @@ public record MedicalDeltaPacket(int mask, DerivedStats stats, LimbSummary[] lim
                 state, deathProgress);
     }
 
-    /**
-     * Whether nothing changed (no component is present); such a delta is not worth sending.
-     */
     public boolean isEmpty() {
         return mask == 0;
     }
 
-    /**
-     * Produce the new full snapshot by overlaying this delta's present components onto {@code base}.
-     */
     public MedicalSyncPacket applyTo(MedicalSyncPacket base) {
         DerivedStats newStats = (mask & STATS) != 0 ? stats : base.stats();
         double newBlood = base.bloodMl();
@@ -150,9 +116,6 @@ public record MedicalDeltaPacket(int mask, DerivedStats stats, LimbSummary[] lim
         }
     }
 
-    /**
-     * Client-thread handler: patch the cached baseline with this delta.
-     */
     public void handleClient() {
         ClientMedicalCache.applyDelta(this);
     }

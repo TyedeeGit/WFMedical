@@ -15,12 +15,6 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
-/**
- * Compact corner overlay showing BLOOD (blue) and PAIN (red) indicators; hidden when both are at baseline.
- * {@link DerivedStats#totalPain()} is already the PERCEIVED (post-numbing) pain so no extra scaling is
- * needed. NOT part of the mandatory overlay registration; expose {@link #INSTANCE} and register it from
- * scaffolding to enable.
- */
 @OnlyIn(Dist.CLIENT)
 public final class VitalsOverlay implements IGuiOverlay {
 
@@ -30,9 +24,6 @@ public final class VitalsOverlay implements IGuiOverlay {
     private static final int BAR_HEIGHT = 6;
     private static final int MARGIN_X = 4;
     private static final int MARGIN_Y = 4;
-    /**
-     * Width reserved for the leading label so blood and pain bars align.
-     */
     private static final int LABEL_WIDTH = 34;
 
     private static final ColorRectTexture BACKGROUND = new ColorRectTexture(0xC0101010);

@@ -8,12 +8,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-/**
- * Envelope hit-registration.
- * Only the box used for the hit-scan clip is changed, collision and physics still use the real box.
- * When {@code hitRegistrationMode} is OFF the redirect returns the unchanged box, so vanilla behaviour and
- * mod compatibility are untouched.
- */
 @Mixin(ProjectileUtil.class)
 public class ProjectileUtilMixin {
 

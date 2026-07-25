@@ -9,30 +9,14 @@ import net.minecraft.nbt.Tag;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Mutable state for one body part. Holds the raw {@link Trauma} list plus cached per-limb aggregates
- * that are rebuilt (via {@link #rebuildCache()}) only when the trauma set changes, keeping the periodic
- * physiology update allocation-light.
- */
 public final class Limb {
 
     private final LimbType type;
     private final List<Trauma> traumas = new ArrayList<>();
     private float maxHealth;
     private float minorDamage;
-    /**
-     * LOCAL ANESTHETIC numbing (0..1) on this limb: strongly reduces this limb's felt pain without touching
-     * the underlying injury. Persisted; decays over time in the engine. Distinct from the profile-wide
-     * systemic ANALGESIA (painkillers) which masks every limb at once.
-     */
     private float localNumbing;
-    /**
-     * A TOURNIQUET on this limb (arms/legs only). While on, it REDUCES the limb's bleeding output (blood
-     * loss) but does NOT treat the underlying wounds – remove it and full bleeding resumes. One per limb.
-     * Distinct from a bandage, which addresses the wound itself. Persisted.
-     */
     private boolean tourniquet;
-    // Cached aggregates (valid while !dirty).
     private double cachedBleeding;
     private float cachedPain;
     private float cachedHealthReduction;
@@ -81,9 +65,6 @@ public final class Limb {
         }
     }
 
-    /**
-     * Whether a tourniquet is currently applied to this limb (reduces its bleeding without treating it).
-     */
     public boolean hasTourniquet() {
         return tourniquet;
     }
@@ -120,10 +101,6 @@ public final class Limb {
         return removed;
     }
 
-    /**
-     * Add {@code incoming}, merging it into a compatible existing trauma when possible. Enforces a
-     * per-limb cap by folding the two least-severe traumas together whenever the count exceeds it.
-     */
     public void tryMerge(Trauma incoming, int maxPerLimb) {
         Trauma mergeTarget = null;
         for (int i = 0; i < traumas.size(); i++) {
@@ -142,19 +119,11 @@ public final class Limb {
         dirty = true;
     }
 
-    /**
-     * Enforce the per-limb cap by folding traumas together. Preserves injury identity: a MINOR trauma is
-     * always chosen as the one dropped (falling back to the least-severe overall only when every trauma is
-     * major), and it is folded into a COMPATIBLE wound when one exists, otherwise into the most-severe other
-     * wound. This never silently converts a major trauma (fracture/laceration) into a minor one just because
-     * the count exceeded the cap.
-     */
     private void enforceCap(int maxPerLimb) {
         if (maxPerLimb <= 0) {
             return;
         }
         while (traumas.size() > maxPerLimb) {
-            // Pick the trauma to drop: least-severe minor if any, else least-severe overall.
             int dropIdx = -1;
             for (int i = 0; i < traumas.size(); i++) {
                 if (!traumas.get(i).isMinor()) {
@@ -176,8 +145,6 @@ public final class Limb {
             }
             Trauma drop = traumas.get(dropIdx);
 
-            // Pick the survivor: prefer a merge-compatible wound; otherwise the most-severe other wound
-            // (so the dropped severity reinforces the biggest injury rather than erasing a major one).
             int keepIdx = -1;
             for (int i = 0; i < traumas.size(); i++) {
                 if (i == dropIdx) {
@@ -202,9 +169,6 @@ public final class Limb {
         }
     }
 
-    /**
-     * Recompute every cached aggregate with a single pass over the trauma list.
-     */
     public void rebuildCache() {
         double bleeding = 0.0D;
         float pain = 0.0F;
@@ -216,10 +180,6 @@ public final class Limb {
             bleeding += t.bleeding();
             pain += t.pain();
             healthReduction += t.healthReduction();
-            // Only LEG trauma slows walking. Arm/head/torso injuries affect aim/reload/etc., never speed,
-            // so a shared trauma type (e.g. a fracture) must not slow movement when it lands on an arm.
-            // Leg fractures specifically are penalised once in Physiology via legFractureSpeedMultiplier;
-            // this data-driven per-limb factor covers other leg trauma (crush, etc.).
             if (type.isLeg()) {
                 movement *= t.getType().getMovementModifier();
             }

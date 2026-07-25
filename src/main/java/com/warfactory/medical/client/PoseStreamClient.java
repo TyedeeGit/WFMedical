@@ -16,16 +16,6 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * CLIENT-ONLY pose streamer for {@link HitAuthority#CLIENT_HINT}. When the server has asked this client to
- * stream (via {@code HitAuthorityPacket}), the local player sends its own posed rig so the server can classify
- * hits against it without rebuilding the pose.
- *
- * <p>Streaming is rate-limited to {@link MedicalConfig#poseStreamMinIntervalTicks} and only sends when the
- * pose actually changed, with a {@link MedicalConfig#poseStreamMaxIntervalTicks} heartbeat so the server's
- * copy never goes stale while the player stands still. The rig itself is the same one the debug overlay uses,
- * fetched through the per-tick {@link RigCache} so it is built at most once per tick.</p>
- */
 @Mod.EventBusSubscriber(modid = WFMedical.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class PoseStreamClient {
 
@@ -36,9 +26,6 @@ public final class PoseStreamClient {
     private PoseStreamClient() {
     }
 
-    /**
-     * Enable/disable streaming for this session (driven by the server's {@code HitAuthorityPacket}).
-     */
     public static void setEnabled(boolean value) {
         enabled = value;
         if (!value) {
@@ -60,22 +47,19 @@ public final class PoseStreamClient {
         long now = player.level().getGameTime();
         long since = now - lastSentTick;
         if (since < MedicalConfig.poseStreamMinIntervalTicks()) {
-            return; // rate limit
+            return;
         }
         HumanoidRig.LocalRig rig = RigCache.get(player);
         float[] flat = flatten(rig);
         boolean changed = !nearlyEqual(flat, lastSent);
         if (!changed && since < MedicalConfig.poseStreamMaxIntervalTicks()) {
-            return; // unchanged and heartbeat not due yet
+            return;
         }
         MedicalNetworking.sendToServer(new PoseStreamPacket(rig));
         lastSent = flat;
         lastSentTick = now;
     }
 
-    /**
-     * Flatten the rig to the same 15-scalars-per-box layout the packet uses, for change detection.
-     */
     private static float[] flatten(HumanoidRig.LocalRig rig) {
         float[] a = new float[HumanoidRig.LocalRig.SLOTS.length * 15];
         int i = 0;
@@ -101,7 +85,6 @@ public final class PoseStreamClient {
         if (b == null || a.length != b.length) {
             return false;
         }
-        // Configurable so small model rotations still trigger a resend (poseStreamChangeEpsilon).
         float eps = (float) MedicalConfig.poseStreamChangeEpsilon();
         for (int i = 0; i < a.length; i++) {
             if (Math.abs(a[i] - b[i]) > eps) {

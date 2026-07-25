@@ -44,35 +44,12 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * CLIENT-ONLY medical interaction screen, built entirely in code. The left side is split into two vertically
- * stacked grids that both re-key on the selected limb and on state changes:
- *
- * <ul>
- *     <li><b>EXAMINATION</b> – a grid of the selected limb's wounds as solid colour squares, each with a tooltip
- *         describing the injury and which treatments address it;</li>
- *     <li><b>TREATMENT</b> – a grid of radial-menu-styled icon buttons, one per available medical item, applied
- *         to the selected limb. When the selected (arm/leg) limb wears a tourniquet, a RED tourniquet button
- *         takes the first cell and REMOVES it instead (and the normal apply button is hidden).</li>
- * </ul>
- *
- * <p>The centre is a health-tinted, selectable body silhouette with a live status readout; the right column is a
- * live vitals overview. Both grids are {@link RefreshingGroup}s that rebuild whenever their signature (selected
- * limb + injuries / tourniquet state / carried items) changes, so switching limb or a physiology update refreshes
- * them without reopening.</p>
- *
- * <p>Reads the synced {@link ClientMedicalCache} snapshot and sends request packets only; it never mutates
- * medical state. The whole root is marked {@code setClientSideWidget()} so supplier-driven widgets re-read the
- * cache each tick (required for client-only LDLib UIs).</p>
- */
 public final class MedInteractionScreen {
 
-    // ------------------------------------------------------------------ root (px)
     private static final int ROOT_W = 453;
     private static final int ROOT_H = 152;
     private static final int ROOT_BG = 0x44222222;
 
-    // ------------------------------------------------------------------ left column (EXAMINATION / TREATMENT)
     private static final int LEFT_X = 12;
 
     private static final int WOUND_Y = 17;
@@ -87,12 +64,8 @@ public final class MedInteractionScreen {
     private static final int GRID_RADIUS = 6;
     private static final int GRID_BG_COLOR = 0xC0202020;
     private static final int GRID_HOVER_COLOR = 0xFFFFDD55;
-    /**
-     * Red face for the tourniquet-removal button (it stands out from the neutral apply buttons).
-     */
     private static final int TQ_REMOVE_BG_COLOR = 0xD0B02020;
 
-    // ------------------------------------------------------------------ body silhouette tiles
     private record LimbTile(LimbType limb, int x, int y, int w, int h) {
     }
 
@@ -104,69 +77,34 @@ public final class MedInteractionScreen {
             new LimbTile(LimbType.LEFT_LEG, 216, 81, 9, 38),
             new LimbTile(LimbType.RIGHT_LEG, 227, 81, 9, 38));
 
-    // ------------------------------------------------------------------ status readout
     private static final int STATUS_CENTER_X = 226;
     private static final int STATUS_Y = 124;
 
-    // ------------------------------------------------------------------ OVERVIEW column (right)
     private static final int OVERVIEW_X = 302;
     private static final int OVERVIEW_Y = 22;
     private static final int OVERVIEW_LINE_H = 12;
 
-    // ------------------------------------------------------------------ target binding (F4: treat others)
-    /**
-     * Entity id of the patient this sheet is bound to ({@code -1} = the local player / self). While bound to a
-     * teammate the sheet reads {@link #targetSnapshot} instead of the local {@link ClientMedicalCache}, and every
-     * treatment / tourniquet request threads this id so the server applies it to that patient.
-     */
     private static volatile int targetId = -1;
-    /**
-     * Latest server-supplied snapshot of the bound target ({@code null} for self / not yet received). Refreshed
-     * by {@link #onTargetSheetInfo} and by the periodic re-request the client tick loop fires while the sheet is
-     * open, so treating a teammate visibly updates their readout.
-     */
     private static volatile MedicalSyncPacket targetSnapshot;
-    /**
-     * Target id of a sheet-open the medic explicitly asked for (open-sheet key pressed while aiming at a
-     * teammate) whose snapshot reply has not arrived yet; {@code -1} = none. Gates {@link #onTargetSheetInfo}
-     * so ONLY a fresh open request pops the screen: the periodic poll-refresh reply that keeps an OPEN sheet
-     * current must never resurrect a sheet the medic already closed.
-     */
     private static volatile int pendingOpenTarget = -1;
 
     private MedInteractionScreen() {
     }
 
-    /**
-     * Record that the medic asked to open the sheet for {@code targetEntityId}; the matching snapshot reply is
-     * then allowed to open the screen. Called by the open-sheet key handler just before it sends the request.
-     */
     public static void markPendingOpen(int targetEntityId) {
         pendingOpenTarget = targetEntityId;
     }
 
-    /**
-     * The entity id this sheet is currently bound to ({@code -1} = self). Used by the client tick loop to
-     * poll-refresh and to detect the sheet closing.
-     */
     public static int targetId() {
         return targetId;
     }
 
-    /**
-     * Unbind from a target (called when the target sheet closes) so later self UIs read the local cache again.
-     */
     public static void clearTarget() {
         targetId = -1;
         targetSnapshot = null;
         pendingOpenTarget = -1;
     }
 
-    /**
-     * Server reply carrying a teammate's full snapshot: store it and mirror their tourniquet mask, then either
-     * refresh the already-open sheet, open a freshly-requested one, or (for a poll reply that raced the sheet
-     * closing) do nothing.
-     */
     public static void onTargetSheetInfo(TargetSheetInfoPacket packet) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
@@ -175,32 +113,19 @@ public final class MedInteractionScreen {
         int id = packet.targetEntityId();
         targetSnapshot = packet.snapshot();
         ClientTourniquetTracker.set(id, packet.tourniquetMask());
-        // Already bound to this target -> a live refresh; the widgets re-read targetSnapshot, nothing to open.
-        // (targetId is cleared the instant the sheet closes, so a matching id means the sheet is still up.)
         if (targetId == id) {
             return;
         }
-        // Not bound -> only OPEN in response to a fresh open request (the key handler marked it pending). A poll
-        // refresh reply that arrives after the medic closed the sheet has no pending mark and is dropped here, so
-        // it never resurrects the dismissed screen.
         if (id != pendingOpenTarget) {
             return;
         }
         open(id);
     }
 
-    /**
-     * Build, wire and open the interaction screen for the LOCAL player.
-     */
     public static void open() {
         open(-1);
     }
 
-    /**
-     * Build, wire and open the interaction screen bound to {@code targetEntityId} ({@code -1} = the local
-     * player). A teammate target sources all readouts from {@link #targetSnapshot} and threads the id through
-     * every treatment / tourniquet request.
-     */
     public static void open(int targetEntityId) {
         Minecraft mc = Minecraft.getInstance();
         Player player = mc.player;
@@ -208,7 +133,7 @@ public final class MedInteractionScreen {
             return;
         }
         targetId = targetEntityId;
-        pendingOpenTarget = -1; // consumed: the screen is opening now
+        pendingOpenTarget = -1;
         if (targetEntityId < 0) {
             targetSnapshot = null;
         }
@@ -223,27 +148,17 @@ public final class MedInteractionScreen {
         addTreatmentGrid(root);
         addOverview(root);
 
-        // Every live widget re-reads its supplier only when marked client-side (client-only UI).
         root.setClientSideWidget();
 
         ModularUI ui = new ModularUI(root, IUIHolder.EMPTY, player);
         ClientUIOpener.openClientUI(ui);
     }
 
-    // ------------------------------------------------------------------ data source (self cache / bound target)
 
-    /**
-     * The snapshot every readout in this sheet reads: the bound target's ({@link #targetSnapshot}) when treating
-     * a teammate, else the local player's synced {@link ClientMedicalCache}. May be {@code null} before the first
-     * sync (callers fall back to healthy defaults).
-     */
     private static MedicalSyncPacket sheetSnapshot() {
         return targetId < 0 ? ClientMedicalCache.get() : targetSnapshot;
     }
 
-    /**
-     * Per-limb summary for the bound subject; a healthy default when no snapshot exists yet.
-     */
     private static LimbSummary sheetLimb(LimbType limb) {
         MedicalSyncPacket snap = sheetSnapshot();
         if (snap != null && snap.limbs() != null) {
@@ -266,30 +181,21 @@ public final class MedInteractionScreen {
         return snap == null ? HealthState.HEALTHY : snap.state();
     }
 
-    /**
-     * The entity id to read tourniquet state / mirror for the bound subject (local player id for self).
-     */
     private static int subjectId() {
         Player player = Minecraft.getInstance().player;
         return targetId < 0 ? (player == null ? -1 : player.getId()) : targetId;
     }
 
-    /**
-     * Display name of the bound target (falls back to a generic label if the entity is out of client view).
-     */
     private static Component targetName() {
         Minecraft mc = Minecraft.getInstance();
         Entity e = mc.level == null ? null : mc.level.getEntity(targetId);
         return e != null ? e.getName() : Component.translatable("gui.wfmedical.wheel.target");
     }
 
-    // ------------------------------------------------------------------ headers
 
     private static void addHeaders(WidgetGroup root) {
         root.addWidget(new LabelWidget(LEFT_X, 5, "EXAMINATION"));
         root.addWidget(new LabelWidget(LEFT_X, TREAT_LABEL_Y, "TREATMENT"));
-        // The STATUS column header doubles as the patient banner: it names (in amber) the teammate being
-        // treated, or reads "STATUS" for the local player.
         LabelWidget statusHeader = new LabelWidget(208, 5, targetId < 0 ? "STATUS" : targetName().getString());
         if (targetId >= 0) {
             statusHeader.setColor(0xFFE0A020);
@@ -298,12 +204,7 @@ public final class MedInteractionScreen {
         root.addWidget(new LabelWidget(340, 5, "OVERVIEW"));
     }
 
-    // ------------------------------------------------------------------ body diagram
 
-    /**
-     * Six health-tinted, selectable limb tiles laid out as a body silhouette (fill + selection border + click +
-     * live tooltip each, via {@link MedicalUIParts#addLimbTile}).
-     */
     private static void addBodyDiagram(WidgetGroup root) {
         for (LimbTile tile : BODY_TILES) {
             MedicalUIParts.addLimbTile(root, tile.limb(), tile.x(), tile.y(), tile.w(), tile.h(),
@@ -311,16 +212,12 @@ public final class MedInteractionScreen {
         }
     }
 
-    // ------------------------------------------------------------------ EXAMINATION (wounds grid)
 
     private static void addExaminationGrid(WidgetGroup root) {
         root.addWidget(new RefreshingGroup(LEFT_X, WOUND_Y, 185, 30,
                 MedInteractionScreen::examinationSignature, MedInteractionScreen::buildWounds));
     }
 
-    /**
-     * Re-key the wounds grid on the selected limb and its injury values.
-     */
     private static Object examinationSignature() {
         LimbType limb = MedicalUIParts.selectedLimb();
         if (limb == null) {
@@ -330,9 +227,6 @@ public final class MedInteractionScreen {
         return targetId + "|" + limb + "|" + s.healthPercent() + "|" + s.bleeding() + "|" + s.pain() + "|" + s.fracture();
     }
 
-    /**
-     * One solid colour square per active wound on the selected limb; empty/absent states show a hint label.
-     */
     private static void buildWounds(WidgetGroup group) {
         LimbType limb = MedicalUIParts.selectedLimb();
         if (limb == null) {
@@ -357,17 +251,12 @@ public final class MedInteractionScreen {
         }
     }
 
-    // ------------------------------------------------------------------ TREATMENT (item grid)
 
     private static void addTreatmentGrid(WidgetGroup root) {
         root.addWidget(new RefreshingGroup(LEFT_X, GRID_Y, 185, 95,
                 MedInteractionScreen::treatmentSignature, MedInteractionScreen::buildTreatments));
     }
 
-    /**
-     * Re-key the treatment grid on whether a treatment is running (which replaces the whole grid with the
-     * progress bar), the selected limb, its tourniquet state and the carried medical items.
-     */
     private static Object treatmentSignature() {
         LimbType limb = MedicalUIParts.selectedLimb();
         StringBuilder sb = new StringBuilder();
@@ -379,12 +268,6 @@ public final class MedInteractionScreen {
         return sb.toString();
     }
 
-    /**
-     * A radial-menu-styled icon button per available medical item. When the selected arm/leg wears a tourniquet,
-     * the first cell is a RED remove-tourniquet button and the normal tourniquet apply button is hidden. While a
-     * treatment is running the whole grid is replaced by the live progress bar + an interrupt button, so no other
-     * treatment can be started until it finishes or is cancelled.
-     */
     private static void buildTreatments(WidgetGroup group) {
         if (ClientMedicalCache.hasActiveTreatment()) {
             buildActiveTreatment(group);
@@ -401,7 +284,7 @@ public final class MedInteractionScreen {
         }
         for (ItemStack stack : MedicalUIParts.availableMedicalItems()) {
             if (tqApplied && isTourniquetItem(stack)) {
-                continue; // its slot is the red remove button; can't apply a second tourniquet
+                continue;
             }
             addTreatmentButton(group, stack, cellX(idx), cellY(idx));
             idx++;
@@ -419,10 +302,6 @@ public final class MedInteractionScreen {
         return (idx / GRID_COLS) * (GRID_CELL + GRID_GAP);
     }
 
-    /**
-     * Active-treatment view: the same progress bar as the HUD overlay (drawn in-screen since the HUD is hidden
-     * behind the menu) plus an interrupt button that cancels the running treatment.
-     */
     private static void buildActiveTreatment(WidgetGroup group) {
         group.addWidget(new ProgressWidget(0, 0, 165, 20));
         String cancel = Component.translatable("gui.wfmedical.treat.interrupt").getString();
@@ -431,10 +310,6 @@ public final class MedInteractionScreen {
                 (ClickData cd) -> MedicalUIParts.requestCancelTreatment()));
     }
 
-    /**
-     * One treatment button: rounded background + item icon, hover-border highlight, item tooltip (name first).
-     * Applies the item to the currently selected limb; leaves the menu open.
-     */
     private static void addTreatmentButton(WidgetGroup group, ItemStack stack, int x, int y) {
         GuiTextureGroup face = new GuiTextureGroup(
                 new ColorRectTexture(GRID_BG_COLOR).setRadius(GRID_RADIUS),
@@ -446,10 +321,6 @@ public final class MedInteractionScreen {
         group.addWidget(button);
     }
 
-    /**
-     * Red tourniquet button (tourniquet icon on a red face) that REMOVES the tourniquet from the selected limb.
-     * The server rolls the configured recovery chance to return the item.
-     */
     private static void addTourniquetRemoveButton(WidgetGroup group, int x, int y) {
         GuiTextureGroup face = new GuiTextureGroup(
                 new ColorRectTexture(TQ_REMOVE_BG_COLOR).setRadius(GRID_RADIUS),
@@ -461,9 +332,6 @@ public final class MedInteractionScreen {
         group.addWidget(button);
     }
 
-    /**
-     * Whether the selected limb is an arm/leg currently wearing a tourniquet (server-synced worn mask).
-     */
     private static boolean tourniquetApplied(LimbType limb) {
         if (limb == null || !(limb.isArm() || limb.isLeg())) {
             return false;
@@ -478,20 +346,11 @@ public final class MedInteractionScreen {
                 && medical.getTreatment().action() == TreatmentAction.APPLY_TOURNIQUET;
     }
 
-    // ------------------------------------------------------------------ status readout
 
-    /**
-     * Live, recolored status line centred under the body: the selected limb's condition, or the overall health
-     * state when nothing is selected.
-     */
     private static void addStatusReadout(WidgetGroup root) {
         root.addWidget(new StatusLabel(STATUS_CENTER_X, STATUS_Y));
     }
 
-    /**
-     * Centred, self-recoloring status line. LabelWidget draws left-anchored, so it recentres itself around
-     * {@link #STATUS_CENTER_X} each tick as the text length changes.
-     */
     private static final class StatusLabel extends LabelWidget {
         private final int centerX;
         private final int lineY;
@@ -520,7 +379,7 @@ public final class MedInteractionScreen {
         String line = MedicalUIParts.limbName(limb).getString()
                 + "  " + Math.round(s.healthPercent() * 100.0F) + "%";
         if (s.fracture()) {
-            line += "  †"; // dagger marks a fracture
+            line += "  †";
         }
         return UiText.escape(line);
     }
@@ -533,18 +392,12 @@ public final class MedInteractionScreen {
         return MedicalUIParts.limbColor(sheetLimb(limb).healthPercent());
     }
 
-    // ------------------------------------------------------------------ OVERVIEW
 
-    /**
-     * Live top-level vitals in the right column, mirroring the character sheet's vitals panel.
-     */
     private static void addOverview(WidgetGroup root) {
         int y = OVERVIEW_Y;
         Player player = Minecraft.getInstance().player;
 
         addLine(root, y, () -> {
-            // Self reads the live vanilla body; a teammate has no local handle, so read the derived health from
-            // the synced target snapshot instead.
             if (targetId < 0) {
                 return "Health: " + Math.round(player.getHealth()) + "/" + Math.round(player.getMaxHealth());
             }
@@ -569,7 +422,6 @@ public final class MedInteractionScreen {
                 "Bleeding: " + fmt((float) sheetStats().totalBleeding()) + " ml/s");
         y += OVERVIEW_LINE_H;
 
-        // State line, recolored live by health state.
         LabelWidget stateLine = new LabelWidget(OVERVIEW_X, y, () ->
                 "State: " + MedicalUIParts.stateName(sheetState()).getString()) {
             @Override
@@ -608,12 +460,7 @@ public final class MedInteractionScreen {
         return String.format(Locale.ROOT, "%.2f", value);
     }
 
-    // ------------------------------------------------------------------ wound model
 
-    /**
-     * The wound kinds derivable from a synced {@link LimbSummary}, each carrying a square colour and the
-     * {@link TreatmentAction}s that address it (surfaced in the tooltip).
-     */
     private enum Wound {
         OPEN_WOUND(0xFFB83232, "open_wound",
                 TreatmentAction.HEAL_TRAUMA, TreatmentAction.SUTURE_WOUND),
@@ -646,10 +493,6 @@ public final class MedInteractionScreen {
             };
         }
 
-        /**
-         * Tooltip: coloured name (+ severity value), a description of the effect, then the treatments that help.
-         * Component tooltips render via vanilla, so bare {@code %} is safe here (no escaping needed).
-         */
         private List<Component> tooltip(LimbSummary s) {
             List<Component> lines = new ArrayList<>();
             lines.add(Component.translatable("gui.wfmedical.wound." + key)
@@ -674,12 +517,7 @@ public final class MedInteractionScreen {
         }
     }
 
-    // ------------------------------------------------------------------ in-screen progress bar
 
-    /**
-     * Draws the shared medical-action progress bar inside the menu (the HUD overlay is suppressed while a screen
-     * is open). The label sits above the bar, so the widget reserves 11px of headroom.
-     */
     private static final class ProgressWidget extends Widget {
         private ProgressWidget(int x, int y, int width, int height) {
             super(new Position(x, y), new Size(width, height));
@@ -694,15 +532,7 @@ public final class MedInteractionScreen {
         }
     }
 
-    // ------------------------------------------------------------------ self-refreshing grid
 
-    /**
-     * A {@link WidgetGroup} that rebuilds its children whenever a signature value changes. The signature is
-     * sampled every tick in {@link #updateScreen()}; on a change the group is cleared and the builder repopulates
-     * it. Because the group is already initialised and marked client-side by then, re-added widgets are
-     * initialised and marked automatically. Used to make the wounds / treatments grids follow the selected limb
-     * and physiology updates live.
-     */
     private static final class RefreshingGroup extends WidgetGroup {
         private final Supplier<Object> signature;
         private final Consumer<WidgetGroup> builder;
@@ -713,7 +543,7 @@ public final class MedInteractionScreen {
             super(x, y, width, height);
             this.signature = signature;
             this.builder = builder;
-            builder.accept(this); // initial content; initialised with the group during ui.initWidgets()
+            builder.accept(this);
             this.last = signature.get();
         }
 

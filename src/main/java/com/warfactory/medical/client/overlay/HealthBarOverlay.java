@@ -13,19 +13,11 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
-/**
- * HUD overlay replacing the vanilla heart bar with a derived-health bar; the vanilla PLAYER_HEALTH overlay
- * is cancelled by {@code MedicalClientEvents} so this fills that slot. All texture instances are static
- * and reused; only {@link ProgressTexture#setProgress(double)} is mutated per frame.
- */
 @OnlyIn(Dist.CLIENT)
 public final class HealthBarOverlay implements IGuiOverlay {
 
     public static final IGuiOverlay INSTANCE = new HealthBarOverlay();
 
-    /**
-     * Mirrors the vanilla left HUD anchor (81px wide, 9px tall, red heart row).
-     */
     private static final int BAR_WIDTH = 81;
     private static final int BAR_HEIGHT = 9;
 
@@ -47,7 +39,6 @@ public final class HealthBarOverlay implements IGuiOverlay {
         if (player == null || mc.level == null) {
             return;
         }
-        // Only when survival-like combat HUD is active (matches the vanilla heart-bar visibility rules).
         if (player.isCreative() || player.isSpectator()) {
             return;
         }
@@ -77,7 +68,6 @@ public final class HealthBarOverlay implements IGuiOverlay {
         int color = MedicalUIParts.stateColor(ClientMedicalCache.state());
         LABEL.setColor(color);
         LABEL.updateText(Math.round(health) + "/" + Math.round(maxHealth));
-        // TextTexture centers within the given rectangle.
         LABEL.draw(graphics, -1, -1, x, y, BAR_WIDTH, BAR_HEIGHT);
     }
 }

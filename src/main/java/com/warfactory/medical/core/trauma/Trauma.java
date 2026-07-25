@@ -3,19 +3,11 @@ package com.warfactory.medical.core.trauma;
 import com.warfactory.medical.core.limb.LimbType;
 import net.minecraft.nbt.CompoundTag;
 
-/**
- * A single mutable injury instance attached to a limb. Physiology is derived from these; the object
- * itself only stores state and exposes cheap per-trauma contributions used when rebuilding limb caches.
- */
 public final class Trauma {
 
     private final TraumaType type;
     private final LimbType limb;
     private float severity;
-    /**
-     * Severity as originally inflicted (grows only by stacking/merge, never by time-worsening). Bleeding is
-     * capped to this so untreated-major worsening ramps PAIN but NOT the blood-loss rate.
-     */
     private float baseSeverity;
     private boolean treated;
     private boolean sutured;
@@ -31,9 +23,6 @@ public final class Trauma {
         this.timestamp = timestamp;
     }
 
-    /**
-     * @return the loaded trauma, or {@code null} if the type is unknown to the registry.
-     */
     public static Trauma load(CompoundTag tag, TraumaRegistry registry) {
         String id = tag.getString("Type");
         TraumaType type = registry.get(id);
@@ -42,7 +31,6 @@ public final class Trauma {
         }
         LimbType limb = LimbType.byOrdinal(tag.getInt("Limb"));
         Trauma t = new Trauma(type, limb, tag.getFloat("Severity"), tag.getLong("Timestamp"));
-        // Older saves lack BaseSeverity -> fall back to the (already-clamped) current severity.
         t.baseSeverity = tag.contains("BaseSeverity") ? t.clampSeverity(tag.getFloat("BaseSeverity")) : t.severity;
         t.treated = tag.getBoolean("Treated");
         t.sutured = tag.getBoolean("Sutured");
@@ -111,31 +99,20 @@ public final class Trauma {
         this.healProgress = healProgress;
     }
 
-    /**
-     * Bleeding contribution in ml/tick; a sutured wound does not bleed, a bandaged one bleeds less.
-     */
     public float bleeding() {
         if (sutured) {
             return 0.0F;
         }
-        // Cap at the ORIGINAL severity: an untreated wound worsens over time (which raises pain), but its
-        // bleeding rate must stay flat -- stacking new wounds still adds, healing still lowers it.
         float bleedSeverity = Math.min(severity, baseSeverity);
         float base = type.getBleedingPerSeverity() * bleedSeverity;
         return treated ? base * 0.25F : base;
     }
 
-    /**
-     * Pain contribution; splinting/stabilizing a fracture eases it.
-     */
     public float pain() {
         float base = type.getPainPerSeverity() * severity;
         return stabilized ? base * 0.5F : base;
     }
 
-    /**
-     * Max-health reduction (only major trauma removes hearts).
-     */
     public float healthReduction() {
         return type.isMajor() ? type.getHealthReductionPerSeverity() * severity : 0.0F;
     }
@@ -159,13 +136,9 @@ public final class Trauma {
                 && this.severity < type.getMaxSeverity();
     }
 
-    /**
-     * Fold {@code other} into this one, capping at the type's max severity.
-     */
     public void mergeIn(Trauma other) {
         this.severity = clampSeverity(this.severity + other.severity);
         this.baseSeverity = clampSeverity(this.baseSeverity + other.baseSeverity);
-        // A merged wound is only as "handled" as its least-treated component.
         this.treated = this.treated && other.treated;
         this.sutured = this.sutured && other.sutured;
         this.stabilized = this.stabilized && other.stabilized;

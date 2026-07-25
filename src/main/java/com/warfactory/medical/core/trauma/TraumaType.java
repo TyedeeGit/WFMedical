@@ -6,10 +6,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * Immutable, data-driven definition of a kind of injury. Instances are created once (from config /
- * registry) and shared; the per-player mutable state lives in {@link Trauma}.
- */
 public final class TraumaType {
 
     private final String id;
@@ -70,9 +66,6 @@ public final class TraumaType {
         return painPerSeverity;
     }
 
-    /**
-     * Bleeding rate in ml/tick per unit severity.
-     */
     public float getBleedingPerSeverity() {
         return bleedingPerSeverity;
     }
@@ -89,16 +82,10 @@ public final class TraumaType {
         return permanent;
     }
 
-    /**
-     * Movement speed multiplier contributed while active (1.0 = no effect).
-     */
     public float getMovementModifier() {
         return movementModifier;
     }
 
-    /**
-     * Max-health points removed per unit severity (only for major trauma).
-     */
     public float getHealthReductionPerSeverity() {
         return healthReductionPerSeverity;
     }
@@ -111,9 +98,6 @@ public final class TraumaType {
         return mergeable;
     }
 
-    /**
-     * {@link TreatmentAction#name()} strings this trauma responds to.
-     */
     public Set<String> getTreatmentActions() {
         return treatmentActions;
     }
@@ -122,9 +106,6 @@ public final class TraumaType {
         return action != null && treatmentActions.contains(action.name());
     }
 
-    /**
-     * Fluent builder; all optional fields default to sensible no-op values.
-     */
     public static final class Builder {
         private final String id;
         private final TraumaCategory category;

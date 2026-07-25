@@ -8,10 +8,6 @@ import net.minecraftforge.common.util.LazyOptional;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Attaches a {@link MedicalData} instance to a player entity and exposes it through the
- * {@link MedicalCapabilities#MEDICAL} capability. Serialization delegates to the data object.
- */
 public final class MedicalProvider implements ICapabilitySerializable<CompoundTag> {
 
     private final IMedicalData data = new MedicalData();

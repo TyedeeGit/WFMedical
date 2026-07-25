@@ -23,21 +23,10 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
-/**
- * CLIENT-ONLY blood-loss desaturation. Fades the 3D scene toward grayscale as blood drops, anchored to the
- * bleed-out DEATH threshold (not an empty pool) so the full desaturation range is visible before death.
- * PostChain created lazily; all failures disable the effect for the session rather than crashing.
- */
 @Mod.EventBusSubscriber(modid = WFMedical.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class BloodDesaturationEffect {
 
-    /**
-     * 0 = untouched, 1 = full grayscale; reached exactly at the bleed-out death threshold.
-     */
     private static final float MAX_DESATURATION = 0.85F;
-    /**
-     * Below this the effect is a no-op; keeps healthy players off the hot path.
-     */
     private static final float EPSILON = 0.001F;
 
     private static final ResourceLocation SHADER =
@@ -46,28 +35,17 @@ public final class BloodDesaturationEffect {
     private static PostChain chain;
     private static int chainWidth = -1;
     private static int chainHeight = -1;
-    /**
-     * Set once on unrecoverable failure; blocks all further processing for the session.
-     */
     private static boolean disabled;
-    /**
-     * Frame counter used to throttle verbose debug logging (see {@link MedicalDebug#verbose()}).
-     */
     private static long logFrame;
 
     private BloodDesaturationEffect() {
     }
 
-    /**
-     * Fires before HUD: desaturates the scene while leaving HUD overlays in full colour.
-     */
     @SubscribeEvent
     public static void onRenderGuiPre(RenderGuiEvent.Pre event) {
         if (disabled) {
             return;
         }
-        // Debug master gate: when off, skip entirely so the untouched vanilla frame (incl. the underwater
-        // blue overlay) is visible for A/B comparison. Toggle with MedicalKeyMappings.TOGGLE_SCREEN_FX.
         if (!MedicalDebug.screenEffectsEnabled()) {
             return;
         }
@@ -90,31 +68,18 @@ public final class BloodDesaturationEffect {
             }
             float saturation = 1.0F - amount;
             setSaturationUniform(active, saturation);
-            // Flush any pending GUI batch so the chain reads a complete frame.
             event.getGuiGraphics().flush();
 
-            // Debug: sample the centre framebuffer pixel BEFORE the desaturation blit so it can be compared
-            // against the AFTER value below. Underwater the "before" pixel is the blue overlay (~alpha 0.1);
-            // if the blit corrupts the overlay, the "after" pixel reveals exactly how (e.g. near-black).
             boolean logNow = MedicalDebug.verbose() && (logFrame++ % 12L == 0L);
             float[] before = logNow ? MedicalDebug.sampleCenterPixel(mc.getMainRenderTarget()) : null;
 
             active.process(event.getPartialTick());
-            // Rebind the main target so subsequent HUD rendering draws to the right place.
             var target = mc.getMainRenderTarget();
             target.bindWrite(false);
-            // PostPass leaves BLEND DISABLED (from the blit pass's blend mode) and never restores the caller's
-            // render state; without this the HUD drawn next -- and translucent world/sky elements next frame --
-            // render wrong (reads as UI + sky corruption while bleeding). Restore GUI-safe defaults.
             RenderSystem.viewport(0, 0, target.viewWidth, target.viewHeight);
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            // The final blit pass writes its fullscreen quad's depth (z=500, depthFunc ALWAYS) into the MAIN
-            // target's depth buffer. Vanilla clears depth just before the HUD, but this runs INSIDE the HUD pass
-            // (RenderGuiEvent.Pre), so that stale depth then occludes every depth-tested GUI draw after it --
-            // LDLib RenderType.gui() is LEQUAL, and item models write/test depth -- making mod overlays and
-            // inventory/hotbar items INVISIBLE. Re-clear the depth buffer to undo the write.
             RenderSystem.depthMask(true);
             RenderSystem.clearDepth(1.0);
             RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
@@ -134,7 +99,6 @@ public final class BloodDesaturationEffect {
                         MedicalDebug.fmt(after));
             }
         } catch (Throwable t) {
-            // A shader/GL failure must never crash the game: disable and tear down for the session.
             WFMedical.LOGGER.warn("[{}] Blood desaturation effect failed; disabling for this session",
                     WFMedical.MOD_ID, t);
             disable();
@@ -146,7 +110,6 @@ public final class BloodDesaturationEffect {
         closeChain();
     }
 
-    // ------------------------------------------------------------------ internals
 
     private static PostChain ensureChain(Minecraft mc) {
         int width = mc.getWindow().getWidth();
@@ -176,23 +139,15 @@ public final class BloodDesaturationEffect {
         return chain;
     }
 
-    /**
-     * {@code safeGetUniform} returns a dummy for undeclared names so this is safe on every pass including the blit.
-     */
     private static void setSaturationUniform(PostChain postChain, float saturation) {
         List<PostPass> passes = ((PostChainAccessor) postChain).wfmedical$getPasses();
         for (PostPass pass : passes) {
             EffectInstance effect = pass.getEffect();
-            // safeGetUniform never returns null (it yields a dummy for undeclared names), so passes such as
-            // the trailing blit that lack "Saturation" simply ignore this call.
             AbstractUniform uniform = effect.safeGetUniform("Saturation");
             uniform.set(saturation);
         }
     }
 
-    /**
-     * Returns desaturation (0..MAX_DESATURATION) ramped so it peaks exactly at the bleed-out death threshold.
-     */
     private static float desaturationAmount() {
         MedicalSyncPacket snap = ClientMedicalCache.get();
         if (snap == null) {
@@ -222,7 +177,6 @@ public final class BloodDesaturationEffect {
             try {
                 chain.close();
             } catch (Exception ignored) {
-                // Closing is best-effort; nothing actionable if it fails.
             }
             chain = null;
         }

@@ -17,10 +17,6 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Set;
 
-/**
- * Registers the medical treatment items. Treatments are inlined here as safety-net defaults mirroring the
- * bundled TOML so items are always functional regardless of config load order.
- */
 public final class ModItems {
 
     public static final DeferredRegister<Item> ITEMS =
@@ -40,17 +36,12 @@ public final class ModItems {
     public static final RegistryObject<Item> PAINKILLERS = medical("painkillers",
             new Treatment(TreatmentAction.REDUCE_PAIN,
                     cats(), 0.5F, 0.0D, 30, false), true);
-    // Local anesthetic: a locally-APPLIED medicine – injected into a single limb (SPEAR/needle pose), unlike
-    // the swallowed general painkiller (EAT). Numbs only the aimed limb.
     public static final RegistryObject<Item> LOCAL_ANESTHETIC = medical("local_anesthetic",
             new Treatment(TreatmentAction.NUMB_LIMB,
                     cats(), 0.9F, 0.0D, 50, false), UseAnim.SPEAR);
-    // Hemostatic: boosts natural blood clotting for a while (raises the self-clot severity threshold + speed).
     public static final RegistryObject<Item> HEMOSTATIC = medical("hemostatic",
             new Treatment(TreatmentAction.BOOST_CLOTTING,
                     cats(), 0.6F, 0.0D, 50, false), true);
-    // Tourniquet: a removable per-limb bleed constrictor (arm/leg). Slows that limb's bleeding while on, but
-    // does NOT treat the wound (unlike a bandage). Applied/removed instantly from the interaction menu.
     public static final RegistryObject<Item> TOURNIQUET = medical("tourniquet",
             new Treatment(TreatmentAction.APPLY_TOURNIQUET, cats(), 0.0F, 0.0D, 20, false));
     public static final RegistryObject<Item> MEDKIT = medical("medkit",
@@ -62,12 +53,10 @@ public final class ModItems {
     public static final RegistryObject<Item> ANTIRAD_SHOT = medical("antirad_shot",
             new Treatment(TreatmentAction.TREAT_RADIATION,
                     cats(TraumaCategory.RADIATION_BURN), 1.0F, 0.0D, 40, true), true);
-    // Injectable substances – hardcoded defaults so items are always functional regardless of config load order.
     public static final RegistryObject<Item> MORPHINE_SYRINGE =
             injectable("morphine_syringe", SubstanceRegistry.defaultMorphine());
     public static final RegistryObject<Item> NALOXONE_SYRINGE =
             injectable("naloxone_syringe", SubstanceRegistry.defaultNaloxone());
-    // Combat Stimulant I: heavily risky, high-dose stimulant – anesthesia + speed + jump-clear + strong clotting.
     public static final RegistryObject<Item> COMBAT_STIMULANT_I =
             injectable("combat_stimulant_i", SubstanceRegistry.defaultCombatStimulant());
 

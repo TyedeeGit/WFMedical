@@ -21,12 +21,6 @@ import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
 import java.util.Locale;
 
-/**
- * CLIENT-ONLY HUD overlay showing a labelled progress bar during a medical action. Progress is driven
- * exclusively by the server's {@code ActiveTreatmentPacket} (cached in {@code ClientMedicalCache}).
- * Nothing drawn when no treatment is active; all nullable state is guarded, no throws inside the render
- * hook.
- */
 @OnlyIn(Dist.CLIENT)
 public final class ActionProgressOverlay implements IGuiOverlay {
 
@@ -51,9 +45,6 @@ public final class ActionProgressOverlay implements IGuiOverlay {
     private ActionProgressOverlay() {
     }
 
-    /**
-     * Build a friendly "<action> (<limb>)" label. Falls back gracefully when either part is null.
-     */
     private static String actionLabel(TreatmentAction action, LimbType limb) {
         String actionName = action == null
                 ? Component.translatable("gui.wfmedical.action.generic").getString()
@@ -64,26 +55,15 @@ public final class ActionProgressOverlay implements IGuiOverlay {
         return actionName + " (" + MedicalUIParts.limbName(limb).getString() + ")";
     }
 
-    /**
-     * Localised progress label for a treatment action, resolved from {@code gui.wfmedical.action.<name>}.
-     */
     private static String friendlyAction(TreatmentAction action) {
         return Component.translatable("gui.wfmedical.action." + action.name().toLowerCase(Locale.ROOT)).getString();
     }
 
     @Override
     public void render(ForgeGui gui, GuiGraphics graphics, float partialTick, int screenW, int screenH) {
-        // The HUD overlay is not drawn while a screen (e.g. the interaction menu) is open; that screen draws the
-        // same bar itself via drawBar().
         drawBar(graphics, screenW / 2 - BAR_WIDTH / 2, screenH - 60, BAR_WIDTH);
     }
 
-    /**
-     * Draw the medical-action progress bar (label above, filled bar, percent) at {@code (x, barY)} with the given
-     * {@code width}, reading the live {@link ClientMedicalCache} active-treatment state. No-op (returns
-     * {@code false}) when no treatment is active. Shared by the HUD overlay and the interaction menu so both show
-     * an identical bar.
-     */
     public static boolean drawBar(GuiGraphics graphics, int x, int barY, int width) {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
@@ -103,7 +83,6 @@ public final class ActionProgressOverlay implements IGuiOverlay {
             progress = 1.0F;
         }
 
-        // Prefix label with the target's name when treating another entity (not self).
         String label;
         int targetId = a.targetEntityId();
         if (targetId >= 0) {
@@ -117,8 +96,6 @@ public final class ActionProgressOverlay implements IGuiOverlay {
             label = actionLabel(a.action(), a.limb());
         }
 
-        // Label sits just above the bar. Escape so a '%' in a (possibly modded) item name / label never
-        // renders as LDLib's "Format error:" (see UiText).
         LABEL.updateText(UiText.escape(label));
         LABEL.draw(graphics, -1, -1, x, barY - 11, width, 9);
 

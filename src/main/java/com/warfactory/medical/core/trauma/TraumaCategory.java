@@ -1,9 +1,5 @@
 package com.warfactory.medical.core.trauma;
 
-/**
- * Broad classification of an injury. {@code majorByDefault} is a hint used when a
- * {@link TraumaType} does not override its major/minor status.
- */
 public enum TraumaCategory {
     BRUISE(false),
     LACERATION(true),

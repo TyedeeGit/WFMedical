@@ -8,9 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-/**
- * CLIENT-only dev harvest tool for {@link TaczArmPose}
- */
 public final class TaczPoseCaptureClient {
 
     private static final String THIRD_PERSON_MANAGER = "com.tacz.guns.api.client.other.ThirdPersonManager";
@@ -18,9 +15,6 @@ public final class TaczPoseCaptureClient {
     private TaczPoseCaptureClient() {
     }
 
-    /**
-     * Invoke TACZ's third-person animation with dummy parts and emit the posed rotations via {@code out}.
-     */
     public static void dump(LivingEntity holder, Consumer<String> out) {
         try {
             Class<?> managerClass = Class.forName(THIRD_PERSON_MANAGER);

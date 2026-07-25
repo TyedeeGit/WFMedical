@@ -10,19 +10,10 @@ import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
 
-/**
- * COMMON-side {@link ForgeConfigSpec} holding the medical system's numeric tunables (engine knobs:
- * update cadence, blood volume, thresholds, feature toggles). Data-driven trauma/treatment definitions
- * live in {@link MedicalDefinitions}. Everything here is server-authoritative.
- */
 public final class MedicalConfig {
 
-    /**
-     * The public spec; integrators may register this directly if they prefer.
-     */
     public static final ForgeConfigSpec SPEC;
 
-    // --- raw config values -------------------------------------------------
     private static final ForgeConfigSpec.IntValue UPDATE_INTERVAL_TICKS;
     private static final ForgeConfigSpec.IntValue MAX_HEALTH_HEARTS;
     private static final ForgeConfigSpec.DoubleValue MAX_BLOOD_ML;
@@ -37,6 +28,8 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.BooleanValue ENABLE_BLEEDING;
     private static final ForgeConfigSpec.BooleanValue ENABLE_PAIN;
     private static final ForgeConfigSpec.BooleanValue ENABLE_BLEEDOUT;
+    private static final ForgeConfigSpec.BooleanValue HEAD_DEPLETION_INSTAKILL;
+    private static final ForgeConfigSpec.BooleanValue TORSO_DEPLETION_INSTAKILL;
     private static final ForgeConfigSpec.IntValue BLEEDOUT_TICKS;
     private static final ForgeConfigSpec.DoubleValue MAJOR_TRAUMA_FRACTION_DEFAULT;
     private static final ForgeConfigSpec.DoubleValue MAJOR_TRAUMA_FRACTION_BALLISTIC;
@@ -66,6 +59,7 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.DoubleValue CLOTTING_BOOST_THRESHOLD_BONUS;
     private static final ForgeConfigSpec.DoubleValue CLOTTING_BOOST_RATE_MULTIPLIER;
     private static final ForgeConfigSpec.IntValue CLOTTING_AGENT_DURATION_TICKS;
+    private static final ForgeConfigSpec.IntValue DEATH_ATTRIBUTION_WINDOW_TICKS;
     private static final ForgeConfigSpec.BooleanValue GEOMETRIC_HIT_LOCATION;
     private static final ForgeConfigSpec.BooleanValue POSE_AWARE_ARMS;
     private static final ForgeConfigSpec.DoubleValue HEAD_BAND_BOTTOM;
@@ -78,10 +72,6 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.BooleanValue OPEN_PERSISTENCE_COMPAT;
     private static final ForgeConfigSpec.BooleanValue TACZ_ARM_POSE;
     private static final ForgeConfigSpec.EnumValue<HitRegMode> HITREG_MODE;
-    /**
-     * Per-stance broad-phase envelope reach, indexed by {@link RigTuning.RigPose#ordinal()}: horizontal (X/Z)
-     * and vertical (Y).
-     */
     private static final ForgeConfigSpec.DoubleValue[] ENV_REACH_H;
     private static final ForgeConfigSpec.DoubleValue[] ENV_REACH_V;
     private static final ForgeConfigSpec.DoubleValue BLOOD_MOVEMENT_PENALTY_LOSS_FRACTION;
@@ -325,6 +315,8 @@ public final class MedicalConfig {
         ENABLE_BLEEDING = b.comment("Master toggle for bleeding / blood loss.").define("enableBleeding", true);
         ENABLE_PAIN = b.comment("Master toggle for the pain system.").define("enablePain", true);
         ENABLE_BLEEDOUT = b.comment("If true, lethal conditions render the player unconscious (bleed-out) instead of instant death.").define("enableBleedout", true);
+        HEAD_DEPLETION_INSTAKILL = b.comment("If true, fully depleting the HEAD's health kills the player OUTRIGHT (bypasses bleed-out/downing). Default false -> a destroyed head downs the player.").define("headDepletionInstakill", false);
+        TORSO_DEPLETION_INSTAKILL = b.comment("If true, fully depleting the TORSO's health kills the player OUTRIGHT (bypasses bleed-out/downing). Default false -> a destroyed torso downs the player.").define("torsoDepletionInstakill", false);
         EFFECT_IMMUNE_IN_CREATIVE = b.comment("Creative-mode players ignore medical penalties.").define("effectImmuneInCreative", true);
         ENABLE_INJECTABLES = b.comment("Master toggle for the injectable/opioid substance system (morphine, naloxone, ...).").define("enableInjectables", true);
         ASPHYXIA_ENABLED = b
@@ -423,6 +415,12 @@ public final class MedicalConfig {
                 .comment("How long (ticks) the clotting boost from a hemostatic BOOST_CLOTTING item lasts "
                         + "(20 ticks = 1 second). Default 2400 (2 minutes).")
                 .defineInRange("clottingAgentDurationTicks", 2400, 1, 72000);
+        DEATH_ATTRIBUTION_WINDOW_TICKS = b
+                .comment("How long (ticks) after being damaged by a player that a subsequent bleed-out / engine "
+                        + "death is still credited to that player (20 ticks = 1 second). Vanilla forgets an "
+                        + "attacker after 100 ticks, so this must be long enough to cover a full bleed-out. "
+                        + "Default 6000 (5 minutes).")
+                .defineInRange("deathAttributionWindowTicks", 6000, 0, 432000);
         OVERDOSE_LETHAL_ENABLED = b
                 .comment("If true, a severe overdose (drug load >= overdoseLethalThreshold) drains health during the overdose unconsciousness.")
                 .define("overdoseLethalEnabled", true);
@@ -541,8 +539,6 @@ public final class MedicalConfig {
                         "fine tests while under-sizing drops hits. Tune live with '/wfmedical hitbox envelope ...' and",
                         "bake the dialled-in numbers back here.")
                 .push("envelopeReach");
-        // Defaults per RigPose (ordinal order STANDING, CROUCHING, PRONE, DOWNED): {horizontal, vertical}.
-        // Upright/crouch only need the arm overhang; the body-horizontal prone/downed silhouettes reach far.
         double[][] envDefaults = {{0.4D, 0.2D}, {0.5D, 0.1D}, {1.0D, 0.3D}, {1.0D, 0.3D}};
         ForgeConfigSpec.DoubleValue[] envH = new ForgeConfigSpec.DoubleValue[RigTuning.RigPose.VALUES.length];
         ForgeConfigSpec.DoubleValue[] envV = new ForgeConfigSpec.DoubleValue[RigTuning.RigPose.VALUES.length];
@@ -648,7 +644,6 @@ public final class MedicalConfig {
         context.registerConfig(ModConfig.Type.COMMON, SPEC);
     }
 
-    // --- typed getters -----------------------------------------------------
 
     public static int updateIntervalTicks() {
         return UPDATE_INTERVAL_TICKS.get();
@@ -658,9 +653,6 @@ public final class MedicalConfig {
         return MAX_HEALTH_HEARTS.get();
     }
 
-    /**
-     * Baseline max health in points (hearts * 2).
-     */
     public static float maxHealthPoints() {
         return MAX_HEALTH_HEARTS.get() * 2.0F;
     }
@@ -733,10 +725,6 @@ public final class MedicalConfig {
         return HEALTH_SHARE_LEG.get().floatValue();
     }
 
-    /**
-     * Max share of the FULL health bar a fully-destroyed limb of this type can remove (per-limb cap). Mirrors
-     * {@link PhysiologyParams#healthShare}; used at damage time to detect a "drained" limb.
-     */
     public static float healthShare(LimbType lt) {
         if (lt == LimbType.HEAD) {
             return healthShareHead();
@@ -747,9 +735,6 @@ public final class MedicalConfig {
         return lt.isLeg() ? healthShareLeg() : healthShareArm();
     }
 
-    /**
-     * Multiplier applied to a limb's bleeding while a tourniquet is on it (slows blood loss, never treats).
-     */
     public static float tourniquetBleedMultiplier() {
         return TOURNIQUET_BLEED_MULTIPLIER.get().floatValue();
     }
@@ -762,23 +747,14 @@ public final class MedicalConfig {
         return TOURNIQUET_ARM_SPEED_MULTIPLIER.get().floatValue();
     }
 
-    /**
-     * Weapon-sway intensity floor (0..1) while any arm wears a tourniquet (read client-side).
-     */
     public static double tourniquetArmSway() {
         return TOURNIQUET_ARM_SWAY.get();
     }
 
-    /**
-     * Chance (0..1) that removing a tourniquet returns the item to the remover (else it is lost).
-     */
     public static double tourniquetRecoveryChance() {
         return TOURNIQUET_RECOVERY_CHANCE.get();
     }
 
-    /**
-     * If true, a purely pain-driven knockout is delayed by the adrenaline grace timer.
-     */
     public static boolean adrenalineEnabled() {
         return ADRENALINE_ENABLED.get();
     }
@@ -787,23 +763,14 @@ public final class MedicalConfig {
         return ADRENALINE_PAIN_KO_DELAY_TICKS.get();
     }
 
-    /**
-     * Short adrenaline-style grace (ticks) before a drug/asphyxia blackout commits (0 = instant).
-     */
     public static int blackoutGraceTicks() {
         return BLACKOUT_GRACE_TICKS.get();
     }
 
-    /**
-     * Per-recompute probability (0..1) an eligible (wakeup-score-low) unconscious player wakes up.
-     */
     public static double wakeChance() {
         return WAKE_CHANCE.get();
     }
 
-    /**
-     * Wakeup score at/below which an unconscious player becomes eligible to roll {@link #wakeChance()}.
-     */
     public static double wakeupScoreThreshold() {
         return WAKEUP_SCORE_THRESHOLD.get();
     }
@@ -824,9 +791,6 @@ public final class MedicalConfig {
         return WAKEUP_BLEED_WEIGHT.get();
     }
 
-    /**
-     * Bleeding rate (ml/tick) that maps to a full (1.0) bleed contribution in the wakeup score.
-     */
     public static double wakeupBleedReference() {
         return WAKEUP_BLEED_REFERENCE.get();
     }
@@ -883,14 +847,18 @@ public final class MedicalConfig {
         return ENABLE_BLEEDOUT.get();
     }
 
+    public static boolean headDepletionInstakill() {
+        return HEAD_DEPLETION_INSTAKILL.get();
+    }
+
+    public static boolean torsoDepletionInstakill() {
+        return TORSO_DEPLETION_INSTAKILL.get();
+    }
+
     public static int bleedoutTicks() {
         return BLEEDOUT_TICKS.get();
     }
 
-    /**
-     * Fraction of the player's FULL healthy health bar a single (non-blocked) hit of the given category must
-     * deal to be a MAJOR TRAUMA that kills on impact. Per-category; unlisted categories use the default.
-     */
     public static double majorTraumaFraction(DamageCategory cat) {
         if (cat == null) {
             return MAJOR_TRAUMA_FRACTION_DEFAULT.get();
@@ -905,17 +873,10 @@ public final class MedicalConfig {
         };
     }
 
-    /**
-     * Whether a damage category can ever cause instant death on impact. Fire/chemical/radiation are
-     * damage-over-time conditions and never instant-kill from a single hit.
-     */
     public static boolean canInstakillOnImpact(DamageCategory cat) {
         return cat != DamageCategory.FIRE && cat != DamageCategory.CHEMICAL && cat != DamageCategory.RADIATION;
     }
 
-    /**
-     * If true, any real damage taken while already downed finishes the player.
-     */
     public static boolean finishDownedOnHit() {
         return FINISH_DOWNED_ON_HIT.get();
     }
@@ -956,6 +917,10 @@ public final class MedicalConfig {
         return CLOTTING_AGENT_DURATION_TICKS.get();
     }
 
+    public static int deathAttributionWindowTicks() {
+        return DEATH_ATTRIBUTION_WINDOW_TICKS.get();
+    }
+
     public static boolean overdoseLethalEnabled() {
         return OVERDOSE_LETHAL_ENABLED.get();
     }
@@ -988,9 +953,6 @@ public final class MedicalConfig {
         return ASPHYXIA_UNCONSCIOUS_TICKS.get();
     }
 
-    /**
-     * Amplifier of the Weakness effect applied while asphyxiating (0 = Weakness I).
-     */
     public static int asphyxiaWeaknessAmplifier() {
         return ASPHYXIA_WEAKNESS_AMPLIFIER.get();
     }
@@ -1007,9 +969,6 @@ public final class MedicalConfig {
         return ASPHYXIA_MOVE_MULTIPLIER.get().floatValue();
     }
 
-    /**
-     * Master switch for the geometric hit-location system; off = legacy weighted sampler.
-     */
     public static boolean geometricHitLocation() {
         return GEOMETRIC_HIT_LOCATION.get();
     }
@@ -1026,9 +985,6 @@ public final class MedicalConfig {
         return LEG_BAND_TOP.get();
     }
 
-    /**
-     * Normalized horizontal offset (|nx|) at/above which a torso-height hit is redirected to an arm.
-     */
     public static double armSideThreshold() {
         return ARM_SIDE_THRESHOLD.get();
     }
@@ -1037,24 +993,14 @@ public final class MedicalConfig {
         return MELEE_REACH.get();
     }
 
-    /**
-     * If true, player hits use server-side rigged limb boxes (Tier 2); otherwise banded-AABB.
-     */
     public static boolean riggedLimbBoxes() {
         return RIGGED_LIMB_BOXES.get();
     }
 
-    /**
-     * Inflation (blocks) applied to each rigged limb box to absorb pose-replica drift.
-     */
     public static double limbBoxPadding() {
         return LIMB_BOX_PADDING.get();
     }
 
-    /**
-     * If true, the rigged limb boxes are live-tunable via {@code /wfmedical hitbox} (debug/test only). Mirrored
-     * into {@link com.warfactory.medical.core.damage.rig.RigTuning#ACTIVE} at config load; off = zero cost.
-     */
     public static boolean hitboxDebug() {
         return HITBOX_DEBUG.get();
     }
@@ -1067,31 +1013,18 @@ public final class MedicalConfig {
         return TACZ_ARM_POSE.get();
     }
 
-    /**
-     * OFF = vanilla box, ENVELOPE = model silhouette, PRECISE = envelope + rig gap-rejection.
-     */
     public static HitRegMode hitRegistrationMode() {
         return HITREG_MODE.get();
     }
 
-    /**
-     * Horizontal (X/Z) envelope reach the hit-scan box is widened by for the given stance.
-     */
     public static double hitEnvelopeReachHorizontal(RigTuning.RigPose pose) {
         return ENV_REACH_H[pose.ordinal()].get();
     }
 
-    /**
-     * Vertical (Y) envelope reach the hit-scan box is widened by for the given stance.
-     */
     public static double hitEnvelopeReachVertical(RigTuning.RigPose pose) {
         return ENV_REACH_V[pose.ordinal()].get();
     }
 
-    /**
-     * Snapshot of the per-stance envelope reach as a flat {@code [pose*2 + axis]} array (axis 0 = horizontal,
-     * 1 = vertical), for seeding {@link RigTuning#seedEnvelope} at config load/reload.
-     */
     public static double[] envelopeReachSnapshot() {
         double[] a = new double[RigTuning.RigPose.VALUES.length * 2];
         for (RigTuning.RigPose pose : RigTuning.RigPose.VALUES) {
@@ -1101,90 +1034,50 @@ public final class MedicalConfig {
         return a;
     }
 
-    /**
-     * SERVER (server rebuilds the rig) or CLIENT_HINT (victim streams its pose; server validates + ray-tests).
-     */
     public static HitAuthority hitAuthority() {
         return HIT_AUTHORITY.get();
     }
 
-    /**
-     * CLIENT_HINT: minimum ticks between pose sends from a victim's client (rate limit).
-     */
     public static int poseStreamMinIntervalTicks() {
         return POSE_STREAM_MIN_INTERVAL_TICKS.get();
     }
 
-    /**
-     * CLIENT_HINT: heartbeat interval (ticks) at which the victim resends its pose even when unchanged.
-     */
     public static int poseStreamMaxIntervalTicks() {
         return POSE_STREAM_MAX_INTERVAL_TICKS.get();
     }
 
-    /**
-     * CLIENT_HINT: age (ticks) past which a streamed pose is stale and the server rebuilds instead.
-     */
     public static int poseHintMaxAgeTicks() {
         return POSE_HINT_MAX_AGE_TICKS.get();
     }
 
-    /**
-     * CLIENT_HINT: bounding-box slack (blocks) when validating a streamed pose.
-     */
     public static double poseHintMargin() {
         return POSE_HINT_MARGIN.get();
     }
 
-    /**
-     * Animation-aware hitboxes (PlayerAnimator compat): when true, players stream their animated pose so the
-     * server classifies hits against it (same validated path as CLIENT_HINT). See {@link #useClientPose()}.
-     */
     public static boolean animatedHitboxes() {
         return ANIMATED_HITBOXES.get();
     }
 
-    /**
-     * Client-pose streaming resend threshold (blocks): a pose is resent once any limb-box scalar drifts past
-     * this from the last sent pose. Smaller catches finer rotations at the cost of more updates.
-     */
     public static double poseStreamChangeEpsilon() {
         return POSE_STREAM_CHANGE_EPSILON.get();
     }
 
-    /**
-     * Whether the server should classify hits against the victim's client-streamed pose: true under either
-     * {@link HitAuthority#CLIENT_HINT} authority or the {@link #animatedHitboxes()} toggle. Both use the same
-     * validated pose-stream mechanism (the server still runs the ray test), so they share one gate here.
-     */
     public static boolean useClientPose() {
         return hitAuthority() == HitAuthority.CLIENT_HINT || animatedHitboxes();
     }
 
-    /**
-     * Master toggle for through-and-through multi-limb wounding (R1 penetration passthrough).
-     */
     public static boolean penetrationEnabled() {
         return PENETRATION_ENABLED.get();
     }
 
-    /**
-     * How much total limb resistance one shot can punch through before it stops.
-     */
     public static double penetrationBudget() {
         return PENETRATION_BUDGET.get();
     }
 
-    /**
-     * Trauma-energy multiplier applied per already-pierced limb (limb N gets energy * falloff^N).
-     */
     public static double penetrationEnergyFalloff() {
         return PENETRATION_ENERGY_FALLOFF.get();
     }
 
-    /**
-     * Penetration resistance of a limb: budget spent as the ray passes through it. Torso is densest.
-     */
     public static double penetrationResistance(LimbType lt) {
         if (lt == LimbType.HEAD) {
             return PEN_RESIST_HEAD.get();
@@ -1195,10 +1088,6 @@ public final class MedicalConfig {
         return lt.isLeg() ? PEN_RESIST_LEG.get() : PEN_RESIST_ARM.get();
     }
 
-    /**
-     * Builds an immutable {@link PhysiologyParams} snapshot from the current config values, for the
-     * pure core to consume. Fields not exposed as tunables fall back to the core defaults.
-     */
     public static PhysiologyParams toPhysiologyParams() {
         PhysiologyParams d = PhysiologyParams.defaults();
         return new PhysiologyParams(
@@ -1232,7 +1121,9 @@ public final class MedicalConfig {
                 healthShareLeg(),
                 tourniquetBleedMultiplier(),
                 tourniquetLegSpeedMultiplier(),
-                tourniquetArmSpeedMultiplier()
+                tourniquetArmSpeedMultiplier(),
+                headDepletionInstakill(),
+                torsoDepletionInstakill()
         );
     }
 }

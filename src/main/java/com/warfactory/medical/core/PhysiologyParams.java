@@ -37,6 +37,8 @@ import com.warfactory.medical.core.limb.LimbType;
  * @param tourniquetBleedMultiplier        multiplier applied to a limb's bleeding while a tourniquet is on it (does not treat the wound).
  * @param tourniquetLegSpeedMultiplier     movement multiplier applied per leg wearing a tourniquet (discourages permanent wear).
  * @param tourniquetArmSpeedMultiplier     movement multiplier applied per arm wearing a tourniquet (minor).
+ * @param headDepletionInstakill           if true, a fully-destroyed head kills outright instead of downing the player.
+ * @param torsoDepletionInstakill          if true, a fully-destroyed torso kills outright instead of downing the player.
  */
 public record PhysiologyParams(
         float maxHealthPoints,
@@ -69,7 +71,9 @@ public record PhysiologyParams(
         float healthShareLeg,
         float tourniquetBleedMultiplier,
         float tourniquetLegSpeedMultiplier,
-        float tourniquetArmSpeedMultiplier
+        float tourniquetArmSpeedMultiplier,
+        boolean headDepletionInstakill,
+        boolean torsoDepletionInstakill
 ) {
     public static PhysiologyParams defaults() {
         return new PhysiologyParams(
@@ -103,7 +107,9 @@ public record PhysiologyParams(
                 0.18F,      // healthShareLeg
                 0.20F,      // tourniquetBleedMultiplier
                 0.85F,      // tourniquetLegSpeedMultiplier
-                0.95F       // tourniquetArmSpeedMultiplier
+                0.95F,      // tourniquetArmSpeedMultiplier
+                false,      // headDepletionInstakill
+                false       // torsoDepletionInstakill
         );
     }
 

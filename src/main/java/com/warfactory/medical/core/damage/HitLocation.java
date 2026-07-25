@@ -10,20 +10,11 @@ import net.minecraft.world.entity.LivingEntity;
 
 import java.util.List;
 
-/**
- * Picks which {@link LimbType} an incoming hit lands on. When the geometric hit-location path can
- * reconstruct a hit position ({@link HitGeometry}), that decides the limb deterministically; otherwise
- * (geometry-less/environmental damage, or the master toggle off) it delegates to the legacy weighted
- * sampler, which nudges each limb's base {@code hitWeight} by {@link DamageCategory} and rolls.
- */
 public final class HitLocation {
 
     private HitLocation() {
     }
 
-    /**
-     * Deterministic geometry first (when a hit position is recoverable), else the weighted sampler.
-     */
     public static LimbType pick(LivingEntity victim, DamageSource src, DamageCategory cat, RandomSource rand) {
         if (victim != null && MedicalConfig.geometricHitLocation()) {
             LimbType g = HitGeometry.classifyHit(victim, src, cat);
@@ -35,12 +26,6 @@ public final class HitLocation {
         return pickWeighted(src, cat, rand);
     }
 
-    /**
-     * Through-and-through variant of {@link #pick} (R1 penetration): the ordered limbs the hit passed through,
-     * nearest first, so the caller can wound each. Element 0 is the same primary limb {@link #pick} returns.
-     * Deterministic geometry first; falls back to a single weighted-sampler limb when no geometry resolves.
-     * Never empty.
-     */
     public static List<LimbType> pickPierced(LivingEntity victim, DamageSource src, DamageCategory cat,
                                              RandomSource rand) {
         if (victim != null && MedicalConfig.geometricHitLocation()) {
@@ -53,12 +38,6 @@ public final class HitLocation {
         return List.of(pickWeighted(src, cat, rand));
     }
 
-    /**
-     * When geometric reconstruction fails for a hit that clearly came FROM an attacker or projectile, log a
-     * diagnostic warning: the direction was untraceable and the limb was chosen by weighted sampling instead.
-     * Purely environmental / positionless damage (fire ticks, poison, drowning, ...) has no direction to trace
-     * and is skipped, so this never spams for ambient damage. Server-side only (the pick pipeline runs there).
-     */
     private static void warnUntraceable(LivingEntity victim, DamageSource src, DamageCategory cat) {
         if (src == null) {
             return;
@@ -69,8 +48,6 @@ public final class HitLocation {
         if (!directional) {
             return;
         }
-        // Distinguish a genuinely unreconstructable position from a deliberate pose fallback (downed /
-        // crawling / swimming), which still had a traceable direction and should stay quiet.
         if (HitGeometry.resolveHitPoint(victim, src, cat) != null) {
             return;
         }
@@ -117,7 +94,6 @@ public final class HitLocation {
         switch (cat) {
             case BALLISTIC:
             case PIERCING:
-                // Aimed/directed projectiles trend towards centre-of-mass and head.
                 if (limb == LimbType.TORSO) {
                     return 1.35F;
                 }
@@ -126,9 +102,6 @@ public final class HitLocation {
                 }
                 return 0.85F;
             case FALL:
-                // Impact damage from falling is absorbed by the legs, sometimes the torso (a bad landing). It
-                // never lands on the arms or head, so those are zeroed out – otherwise the weighted roll would
-                // occasionally (~8% arms, ~3% head) blame a fall on a limb that took no impact.
                 if (limb.isLeg()) {
                     return 2.5F;
                 }
@@ -137,7 +110,6 @@ public final class HitLocation {
                 }
                 return 0.0F;
             case EXPLOSION:
-                // Blasts spread widely; flatten slightly towards the extremities.
                 return limb.isVital() ? 0.9F : 1.2F;
             default:
                 return 1.0F;

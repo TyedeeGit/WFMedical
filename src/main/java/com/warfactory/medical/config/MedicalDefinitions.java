@@ -21,15 +21,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
 
-/**
- * Loads the data-driven trauma / treatment definitions from a TOML file (parsed with Forge's bundled
- * NightConfig). On first run the bundled classpath resource is copied into the config directory so
- * users can edit it.
- *
- * <p>Everything is defensive: missing keys fall back to sensible defaults, and if the file cannot be
- * read/parsed at all we fall back to {@link #loadDefaults} which builds the same
- * set programmatically. The populated registry is installed via {@link TraumaRegistry#setActive}.</p>
- */
 public final class MedicalDefinitions {
 
     public static final String FILE_NAME = "wfmedical_definitions.toml";
@@ -38,9 +29,6 @@ public final class MedicalDefinitions {
     private MedicalDefinitions() {
     }
 
-    /**
-     * Loads definitions from TOML (copying bundled defaults if missing), then activates both registries.
-     */
     public static void load(Path configDir, TraumaRegistry registry, Map<String, Treatment> itemTreatments,
                             SubstanceRegistry substances) {
         registry.clear();
@@ -65,7 +53,6 @@ public final class MedicalDefinitions {
         if (registry.size() == 0) {
             loadDefaults(registry, itemTreatments, substances);
         }
-        // Injectables are independent of trauma; fall back to the hardcoded substances if none were parsed.
         if (substances.size() == 0) {
             substances.registerDefaults();
         }
@@ -196,13 +183,7 @@ public final class MedicalDefinitions {
         );
     }
 
-    // ---------------------------------------------------------------------
-    // Hardcoded fallback that mirrors wfmedical_definitions.toml exactly.
-    // ---------------------------------------------------------------------
 
-    /**
-     * Populates the SAME definitions as the bundled TOML, programmatically (IO-free safety net).
-     */
     public static void loadDefaults(TraumaRegistry registry, Map<String, Treatment> itemTreatments,
                                     SubstanceRegistry substances) {
         registry.register(TraumaType.builder("bruise", TraumaCategory.BRUISE)
@@ -225,8 +206,6 @@ public final class MedicalDefinitions {
 
         registry.register(TraumaType.builder("fracture", TraumaCategory.FRACTURE)
                 .major(true).severityContribution(0.9F).painPerSeverity(0.5F).bleedingPerSeverity(0.0F)
-                // movementModifier stays 1.0: the leg-fracture speed penalty is applied once in Physiology
-                // via legFractureSpeedMultiplier, and only for legs (an arm fracture must not slow walking).
                 .healSpeedPerTick(0.00005F).canReopen(false).permanent(false).movementModifier(1.0F)
                 .healthReductionPerSeverity(3.0F).maxSeverity(1.0F).mergeable(false)
                 .treatments(TreatmentAction.STABILIZE_FRACTURE, TreatmentAction.HEAL_TRAUMA).build());
@@ -290,15 +269,11 @@ public final class MedicalDefinitions {
         itemTreatments.put("wfmedical:antirad_shot", new Treatment(TreatmentAction.TREAT_RADIATION,
                 EnumSet.of(TraumaCategory.RADIATION_BURN), 1.0F, 0.0D, 40, true));
 
-        // Injectable substances (mirror the bundled TOML [[substance]] tables).
         substances.register(SubstanceRegistry.defaultMorphine());
         substances.register(SubstanceRegistry.defaultNaloxone());
         substances.register(SubstanceRegistry.defaultCombatStimulant());
     }
 
-    // ---------------------------------------------------------------------
-    // NightConfig read helpers (tolerant of missing / wrong-typed keys).
-    // ---------------------------------------------------------------------
 
     @SuppressWarnings("unchecked")
     private static List<Config> getTableList(Config root, String key) {

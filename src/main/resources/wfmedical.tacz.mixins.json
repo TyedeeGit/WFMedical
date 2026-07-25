@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "package": "com.warfactory.medical.mixin.tacz",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "wfmedical.refmap.json",
+  "minVersion": "0.8.5",
+  "mixins": [
+    "LivingEntityReloadMixin",
+    "LivingEntityShootMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
