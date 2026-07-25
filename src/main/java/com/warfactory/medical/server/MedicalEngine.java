@@ -339,6 +339,21 @@ public final class MedicalEngine {
         enactEngineDeath(player, profile);
     }
 
+    public static void giveUp(ServerPlayer player) {
+        if (player == null || !MedicalConfig.enableGiveUp()) {
+            return;
+        }
+        IMedicalData data = MedicalCapabilities.get(player);
+        if (data == null) {
+            return;
+        }
+        MedicalProfile profile = data.getProfile();
+        if (!profile.isDowned() || player.getHealth() <= 0.0F) {
+            return;
+        }
+        enactEngineDeath(player, profile);
+    }
+
     private static void enactEngineDeath(ServerPlayer player, MedicalProfile profile) {
         profile.enterDeadState(true);
         if (profile.hasActiveTreatment()) {

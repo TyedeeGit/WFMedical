@@ -30,6 +30,8 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.BooleanValue ENABLE_BLEEDOUT;
     private static final ForgeConfigSpec.BooleanValue HEAD_DEPLETION_INSTAKILL;
     private static final ForgeConfigSpec.BooleanValue TORSO_DEPLETION_INSTAKILL;
+    private static final ForgeConfigSpec.BooleanValue ENABLE_GIVE_UP;
+    private static final ForgeConfigSpec.IntValue GIVE_UP_HOLD_TICKS;
     private static final ForgeConfigSpec.IntValue BLEEDOUT_TICKS;
     private static final ForgeConfigSpec.DoubleValue MAJOR_TRAUMA_FRACTION_DEFAULT;
     private static final ForgeConfigSpec.DoubleValue MAJOR_TRAUMA_FRACTION_BALLISTIC;
@@ -317,6 +319,8 @@ public final class MedicalConfig {
         ENABLE_BLEEDOUT = b.comment("If true, lethal conditions render the player unconscious (bleed-out) instead of instant death.").define("enableBleedout", true);
         HEAD_DEPLETION_INSTAKILL = b.comment("If true, fully depleting the HEAD's health kills the player OUTRIGHT (bypasses bleed-out/downing). Default false -> a destroyed head downs the player.").define("headDepletionInstakill", false);
         TORSO_DEPLETION_INSTAKILL = b.comment("If true, fully depleting the TORSO's health kills the player OUTRIGHT (bypasses bleed-out/downing). Default false -> a destroyed torso downs the player.").define("torsoDepletionInstakill", false);
+        ENABLE_GIVE_UP = b.comment("If true, a downed (unconscious / bleeding-out) player may HOLD the 'Give Up' key to die instantly and reach the respawn screen.").define("enableGiveUp", true);
+        GIVE_UP_HOLD_TICKS = b.comment("How long (ticks) a downed player must HOLD the 'Give Up' key before dying (20 ticks = 1 second). Default 40 (2 seconds).").defineInRange("giveUpHoldTicks", 40, 1, 1200);
         EFFECT_IMMUNE_IN_CREATIVE = b.comment("Creative-mode players ignore medical penalties.").define("effectImmuneInCreative", true);
         ENABLE_INJECTABLES = b.comment("Master toggle for the injectable/opioid substance system (morphine, naloxone, ...).").define("enableInjectables", true);
         ASPHYXIA_ENABLED = b
@@ -853,6 +857,14 @@ public final class MedicalConfig {
 
     public static boolean torsoDepletionInstakill() {
         return TORSO_DEPLETION_INSTAKILL.get();
+    }
+
+    public static boolean enableGiveUp() {
+        return ENABLE_GIVE_UP.get();
+    }
+
+    public static int giveUpHoldTicks() {
+        return GIVE_UP_HOLD_TICKS.get();
     }
 
     public static int bleedoutTicks() {

@@ -48,6 +48,7 @@ public final class MedicalClientEvents {
         Minecraft mc = Minecraft.getInstance();
         keepRespawnButtonUsable(mc);
         pollTargetSheet(mc);
+        GiveUpHandler.tick(mc);
         if (mc.player == null || mc.screen != null) {
             drain(MedicalKeyMappings.OPEN_SHEET);
             drain(MedicalKeyMappings.OPEN_RADIAL);

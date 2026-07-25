@@ -163,6 +163,15 @@ public final class MedicalNetworking {
                     ctx.get().setPacketHandled(true);
                 })
                 .add();
+
+        CHANNEL.messageBuilder(GiveUpPacket.class, 16, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(GiveUpPacket::encode)
+                .decoder(GiveUpPacket::decode)
+                .consumerMainThread((packet, ctx) -> {
+                    packet.handleServer(ctx.get().getSender());
+                    ctx.get().setPacketHandled(true);
+                })
+                .add();
     }
 
     public static int tourniquetMask(MedicalProfile profile) {

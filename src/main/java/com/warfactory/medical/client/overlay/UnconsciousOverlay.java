@@ -108,6 +108,8 @@ public final class UnconsciousOverlay implements IGuiOverlay {
             }
             registered = true;
             event.registerAboveAll(OVERLAY_ID, INSTANCE);
+            event.registerAbove(new ResourceLocation(WFMedical.MOD_ID, OVERLAY_ID),
+                    GiveUpOverlay.OVERLAY_ID, GiveUpOverlay.INSTANCE);
         }
     }
 }

@@ -24,6 +24,13 @@ public final class MedicalKeyMappings {
             GLFW.GLFW_KEY_G,
             CATEGORY);
 
+    public static final KeyMapping GIVE_UP = new KeyMapping(
+            "key.wfmedical.give_up",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_BACKSPACE,
+            CATEGORY);
+
     public static final KeyMapping TOGGLE_DEBUG = new KeyMapping(
             "key.wfmedical.toggle_debug",
             KeyConflictContext.IN_GAME,
@@ -58,6 +65,7 @@ public final class MedicalKeyMappings {
     public static void register(RegisterKeyMappingsEvent event) {
         event.register(OPEN_SHEET);
         event.register(OPEN_RADIAL);
+        event.register(GIVE_UP);
         event.register(TOGGLE_DEBUG);
         event.register(TOGGLE_HITBOX);
         if (MedicalDebug.ENABLED) {
