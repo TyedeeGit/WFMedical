@@ -71,6 +71,7 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.BooleanValue RIGGED_LIMB_BOXES;
     private static final ForgeConfigSpec.DoubleValue LIMB_BOX_PADDING;
     private static final ForgeConfigSpec.BooleanValue HITBOX_DEBUG;
+    private static final ForgeConfigSpec.BooleanValue LOG_HIT_DETECTION;
     private static final ForgeConfigSpec.BooleanValue OPEN_PERSISTENCE_COMPAT;
     private static final ForgeConfigSpec.BooleanValue TACZ_ARM_POSE;
     private static final ForgeConfigSpec.EnumValue<HitRegMode> HITREG_MODE;
@@ -508,6 +509,13 @@ public final class MedicalConfig {
                         "runtime cost -- the boxes are built straight from their fixed base spec, no tuning applied.",
                         "The '/wfmedical hitbox debug on|off' command flips this live for a session without a reload.")
                 .define("hitboxDebug", false);
+        LOG_HIT_DETECTION = b
+                .comment("DEBUG/TEST tool. If true, every TACZ bullet's own broad-phase collision test is compared",
+                        "against the rig's per-limb OBBs for nearby players and logged: whether TACZ itself registered",
+                        "a hit, and whether the rig would have classified a limb for that same ray. A 'HITBOX GAP'",
+                        "warning is logged whenever a shot would land on a rig limb box but TACZ's own collision test",
+                        "missed it entirely (so no damage/hurt event ever fired). Off (the default) has ZERO runtime cost.")
+                .define("logHitDetection", false);
         b.pop();
 
         b.push("compat");
@@ -1015,6 +1023,10 @@ public final class MedicalConfig {
 
     public static boolean hitboxDebug() {
         return HITBOX_DEBUG.get();
+    }
+
+    public static boolean logHitDetection() {
+        return LOG_HIT_DETECTION.get();
     }
 
     public static boolean openPersistenceCompat() {

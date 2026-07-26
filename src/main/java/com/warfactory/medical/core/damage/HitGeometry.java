@@ -38,14 +38,23 @@ public final class HitGeometry {
 
 
     public static @Nullable LimbType classifyHit(LivingEntity victim, DamageSource src, DamageCategory cat) {
+        boolean debug = MedicalConfig.logHitDetection();
         if (victim instanceof Player && MedicalConfig.riggedLimbBoxes() && rigUsable(victim)) {
             LimbType rigLimb = classifyRig(victim, src, cat);
             if (rigLimb != null) {
+                if (debug) {
+                    HitDetectionDebug.logClassifyHit(victim, src, cat, "RIG", rigLimb);
+                }
                 return rigLimb;
             }
         }
         Vec3 hit = resolveHitPoint(victim, src, cat);
-        return hit == null ? null : classifyLocal(victim, hit);
+        LimbType result = hit == null ? null : classifyLocal(victim, hit);
+        if (debug) {
+            HitDetectionDebug.logClassifyHit(victim, src, cat, hit == null ? "NO_HIT_POINT" : "BANDED_FALLBACK",
+                    result);
+        }
+        return result;
     }
 
     public static List<LimbType> classifyHitPierced(LivingEntity victim, DamageSource src, DamageCategory cat) {
@@ -68,6 +77,20 @@ public final class HitGeometry {
         var attacker = src.getEntity();
 
         if (direct instanceof Projectile && direct != attacker) {
+            Optional<Vec3[]> taczSeg = TaczCompat.bulletSegment(src);
+            if (taczSeg.isPresent()) {
+                Vec3[] seg = taczSeg.get();
+                LimbType rayLimb = rigRayPick(victim, seg[0], seg[1]);
+                if (rayLimb != null) {
+                    return rayLimb;
+                }
+                // Ray missed every OBB outright (e.g. a grazing shot at the envelope's edge) -- fall back
+                // to nearest-surface point-pick rather than discarding TACZ's own resolved hit entirely.
+                Optional<Vec3> tacz = TaczCompat.bulletHitPos(src);
+                if (tacz.isPresent()) {
+                    return rigPointPick(victim, tacz.get(), src, "TACZ_PROJECTILE_FALLBACK");
+                }
+            }
             Vec3 to = direct.position();
             Vec3 from = new Vec3(direct.xo, direct.yo, direct.zo);
             Vec3 dir = to.subtract(from);
@@ -78,7 +101,7 @@ public final class HitGeometry {
                 dir = victim.position().subtract(to);
             }
             if (dir.lengthSqr() < 1.0e-8) {
-                return rigPointPick(victim, nearestPointOnBox(box, to));
+                return rigPointPick(victim, nearestPointOnBox(box, to), src, "PROJECTILE_DEGENERATE");
             }
             Vec3 d = dir.normalize();
             return rigRayPick(victim, from.subtract(d.scale(TRACE_MARGIN)), to.add(d.scale(TRACE_MARGIN)));
@@ -91,7 +114,7 @@ public final class HitGeometry {
                 if (ballistic) {
                     Optional<Vec3> tacz = TaczCompat.bulletHitPos(src);
                     if (tacz.isPresent()) {
-                        return rigPointPick(victim, tacz.get());
+                        return rigPointPick(victim, tacz.get(), src, "TACZ_BALLISTIC");
                     }
                 }
                 Vec3 eye = shooter.getEyePosition();
@@ -105,7 +128,7 @@ public final class HitGeometry {
         if (srcPos != null) {
             Vec3 centre = box.getCenter();
             Vec3 entry = box.clip(srcPos, centre).orElse(centre);
-            return rigPointPick(victim, entry);
+            return rigPointPick(victim, entry, src, "SRC_POS_FALLBACK");
         }
 
         return null;
@@ -158,6 +181,9 @@ public final class HitGeometry {
         var direct = src.getDirectEntity();
         var attacker = src.getEntity();
         if (direct instanceof Projectile && direct != attacker) {
+            if (TaczCompat.bulletHitPos(src).isPresent()) {
+                return null;
+            }
             Vec3 to = direct.position();
             Vec3 from = new Vec3(direct.xo, direct.yo, direct.zo);
             Vec3 dir = to.subtract(from);
@@ -196,6 +222,10 @@ public final class HitGeometry {
         var attacker = src.getEntity();
 
         if (direct instanceof Projectile && direct != attacker) {
+            Optional<Vec3> tacz = TaczCompat.bulletHitPos(src);
+            if (tacz.isPresent()) {
+                return tacz.get();
+            }
             Vec3 to = direct.position();
             Vec3 from = new Vec3(direct.xo, direct.yo, direct.zo);
             Vec3 dir = to.subtract(from);
@@ -366,7 +396,7 @@ public final class HitGeometry {
         return out;
     }
 
-    private static LimbType rigPointPick(LivingEntity victim, Vec3 worldPoint) {
+    private static LimbType rigPointPick(LivingEntity victim, Vec3 worldPoint, DamageSource src, String branch) {
         Vec3 local = worldToLocalPoint(victim, worldPoint);
         HumanoidRig.LocalRig rig = RigCache.resolve(victim);
         double best = Double.POSITIVE_INFINITY;
@@ -377,6 +407,9 @@ public final class HitGeometry {
                 best = d;
                 limb = obb.limb();
             }
+        }
+        if (MedicalConfig.logHitDetection()) {
+            HitDetectionDebug.logRigPointPick(victim, src, branch, rig, local, limb);
         }
         return limb;
     }

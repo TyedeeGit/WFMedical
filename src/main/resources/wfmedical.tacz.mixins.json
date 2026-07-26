@@ -5,6 +5,8 @@
   "refmap": "wfmedical.refmap.json",
   "minVersion": "0.8.5",
   "mixins": [
+    "EntityKineticBulletMixin",
+    "EntityUtilMixin",
     "LivingEntityReloadMixin",
     "LivingEntityShootMixin"
   ],

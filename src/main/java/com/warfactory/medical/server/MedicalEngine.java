@@ -6,6 +6,7 @@ import com.warfactory.medical.config.MedicalConfig;
 import com.warfactory.medical.core.DerivedStats;
 import com.warfactory.medical.core.HealthState;
 import com.warfactory.medical.core.MedicalProfile;
+import com.warfactory.medical.core.damage.HitDetectionDebug;
 import com.warfactory.medical.core.PhysiologyParams;
 import com.warfactory.medical.core.limb.Limb;
 import com.warfactory.medical.core.limb.LimbType;
@@ -91,7 +92,11 @@ public final class MedicalEngine {
         attemptWake(player, profile);
 
         boolean wasDirty = profile.isDirty();
+        HealthState beforeState = profile.getState();
         DerivedStats stats = wasDirty ? profile.recompute(params) : profile.cached();
+        if (MedicalConfig.logHitDetection() && stats.state() != beforeState) {
+            HitDetectionDebug.logStateTransition(player, beforeState, stats.state(), nowTick);
+        }
 
         if (stats.state() == HealthState.UNCONSCIOUS && profile.getForcedState() == null
                 && !profile.isUnconsciousLatched()) {

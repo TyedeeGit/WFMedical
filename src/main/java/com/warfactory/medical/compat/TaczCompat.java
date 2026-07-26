@@ -76,7 +76,28 @@ public final class TaczCompat {
 
 
     public static Optional<Vec3> bulletHitPos(DamageSource src) {
-        return Optional.empty();
+        return taczHit(src).map(TaczHitCapture.TaczHit::point);
+    }
+
+    /**
+     * The bullet's real per-tick raycast segment, for entry-order (ray-based) OBB classification.
+     * Prefer this over {@link #bulletHitPos} when picking a limb: a single point is ambiguous whenever
+     * it lands near a shared boundary between two limb boxes (e.g. shoulder, hip), which happens on
+     * essentially every close-range shot, whereas "first box the ray actually enters" is well-defined.
+     */
+    public static Optional<Vec3[]> bulletSegment(DamageSource src) {
+        return taczHit(src).map(h -> new Vec3[]{h.start(), h.end()});
+    }
+
+    private static Optional<TaczHitCapture.TaczHit> taczHit(DamageSource src) {
+        if (src == null) {
+            return Optional.empty();
+        }
+        var direct = src.getDirectEntity();
+        if (direct == null) {
+            return Optional.empty();
+        }
+        return TaczHitCapture.peek(direct.getId());
     }
 
     private static boolean matches(String value) {

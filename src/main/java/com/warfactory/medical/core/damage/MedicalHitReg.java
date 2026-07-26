@@ -19,12 +19,21 @@ public final class MedicalHitReg {
     }
 
     public static AABB registrationBox(Entity entity) {
-        AABB box = entity.getBoundingBox();
+        return registrationBox(entity, entity.getBoundingBox());
+    }
+
+    /**
+     * Same envelope inflation as {@link #registrationBox(Entity)}, but applied to a caller-supplied base box
+     * rather than the entity's live {@code getBoundingBox()}. Lets callers that already have their own
+     * (e.g. lag-compensated) box for the entity widen it by the same pose-aware margins instead of
+     * discarding that adjustment in favor of the plain current box.
+     */
+    public static AABB registrationBox(Entity entity, AABB base) {
         if (MedicalConfig.hitRegistrationMode() == HitRegMode.OFF) {
-            return box;
+            return base;
         }
         if (!isEnvelopeTarget(entity) || !(entity instanceof LivingEntity living)) {
-            return box;
+            return base;
         }
         RigTuning.RigPose pose = HumanoidRig.resolvePose(living);
         double h;
@@ -37,8 +46,8 @@ public final class MedicalHitReg {
             v = MedicalConfig.hitEnvelopeReachVertical(pose);
         }
         if (h <= 0.0 && v <= 0.0) {
-            return box;
+            return base;
         }
-        return box.inflate(h, v, h);
+        return base.inflate(h, v, h);
     }
 }

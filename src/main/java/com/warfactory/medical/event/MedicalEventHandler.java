@@ -195,7 +195,13 @@ public final class MedicalEventHandler {
             return;
         }
         profile.markDirty();
-        data.bumpRevision();
+        // Reconcile (recompute derived stats, apply effects, broadcast downed state) immediately rather
+        // than waiting for the next throttled MedicalEngine tick (up to updateIntervalTicks ticks later).
+        // Without this, a hit that pushes the victim into UNCONSCIOUS renders them fully upright/mobile
+        // for that whole window before snapping into the downed pose -- most visible on armored hits,
+        // since armor is what most often turns a would-be-lethal (instant markDead, no gap) hit into a
+        // survived-but-downed one.
+        MedicalEngine.resync(player, true);
 
         if (res.armor() == ArmorEvaluation.Outcome.BLOCKED) {
             event.setAmount(Math.min(amount * BLOCKED_RESIDUAL_FRACTION, BLOCKED_RESIDUAL_MAX));
@@ -346,11 +352,15 @@ public final class MedicalEventHandler {
         if (profile.hasActiveTreatment()) {
             MedicalActionService.cancel(player, "dead");
         }
-        if (profile.isLastBroadcastDowned()) {
-            MedicalNetworking.broadcastDowned(player, false);
-            profile.setLastBroadcastDowned(false);
-        }
-        player.refreshDimensions();
+        // Deliberately NOT un-broadcasting downed=false / resetting the hitbox here: this used to snap
+        // the corpse back to the standing pose/hitbox the instant death was triggered, which races ahead
+        // of vanilla's own ~20-tick death-fall animation and produces a visible "stands upright, then
+        // lays back down a second later" flash on any hit that finishes off an already-downed player.
+        // A dead body staying rendered lying flat through the death sequence is the correct look anyway.
+        // The downed flag/hitbox is reset independently on respawn: the respawned player gets a brand new
+        // MedicalProfile (onPlayerClone bails out on death, MedicalProfile.java) whose lastBroadcastDowned
+        // defaults false, MedicalEventHandler.onPlayerRespawn resyncs it, and the client's own
+        // ClientDownedTracker.Events.onRespawnClone independently clears the flag for the new entity id.
         data.bumpRevision();
     }
 

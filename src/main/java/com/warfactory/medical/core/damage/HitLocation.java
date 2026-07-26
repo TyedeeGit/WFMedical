@@ -23,7 +23,11 @@ public final class HitLocation {
             }
             warnUntraceable(victim, src, cat);
         }
-        return pickWeighted(src, cat, rand);
+        LimbType weighted = pickWeighted(src, cat, rand);
+        if (victim != null && MedicalConfig.logHitDetection()) {
+            HitDetectionDebug.logRandomFallback(victim, src, cat, weighted);
+        }
+        return weighted;
     }
 
     public static List<LimbType> pickPierced(LivingEntity victim, DamageSource src, DamageCategory cat,
@@ -35,7 +39,11 @@ public final class HitLocation {
             }
             warnUntraceable(victim, src, cat);
         }
-        return List.of(pickWeighted(src, cat, rand));
+        LimbType weighted = pickWeighted(src, cat, rand);
+        if (victim != null && MedicalConfig.logHitDetection()) {
+            HitDetectionDebug.logRandomFallback(victim, src, cat, weighted);
+        }
+        return List.of(weighted);
     }
 
     private static void warnUntraceable(LivingEntity victim, DamageSource src, DamageCategory cat) {
