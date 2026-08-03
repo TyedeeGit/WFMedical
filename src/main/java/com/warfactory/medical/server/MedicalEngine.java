@@ -11,11 +11,13 @@ import com.warfactory.medical.core.PhysiologyParams;
 import com.warfactory.medical.core.limb.Limb;
 import com.warfactory.medical.core.limb.LimbType;
 import com.warfactory.medical.core.trauma.Trauma;
+import com.warfactory.medical.damage.DamageSources;
 import com.warfactory.medical.network.MedicalNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.damagesource.DamageSource;
 
 import java.util.List;
 import java.util.UUID;
@@ -121,8 +123,7 @@ public final class MedicalEngine {
 
         updateDeathProgress(profile, params);
         if (stats.state() == HealthState.DEAD && player.getHealth() > 0.0F) {
-            creditLastDamagingPlayer(player, profile);
-            player.setHealth(0.0F);
+            killByBleedingOut(player, profile);
         }
 
         if (wasDirty) {
@@ -195,7 +196,7 @@ public final class MedicalEngine {
                 if (next > 1.0F) {
                     player.setHealth(next);
                 } else {
-                    enactEngineDeath(player, profile);
+                    killByOverdose(player, profile);
                 }
             }
         }
@@ -340,10 +341,6 @@ public final class MedicalEngine {
         }
     }
 
-    private static void killByAsphyxia(ServerPlayer player, MedicalProfile profile) {
-        enactEngineDeath(player, profile);
-    }
-
     public static void giveUp(ServerPlayer player) {
         if (player == null || !MedicalConfig.enableGiveUp()) {
             return;
@@ -356,16 +353,32 @@ public final class MedicalEngine {
         if (!profile.isDowned() || player.getHealth() <= 0.0F) {
             return;
         }
-        enactEngineDeath(player, profile);
+        killByGivingUp(player, profile);
     }
 
-    private static void enactEngineDeath(ServerPlayer player, MedicalProfile profile) {
+    private static void killByBleedingOut(ServerPlayer player, MedicalProfile profile) {
+        kill(player, profile, DamageSources.bleedingOut(player.level()));
+    }
+
+    private static void killByGivingUp(ServerPlayer player, MedicalProfile profile) {
+        kill(player, profile, DamageSources.givingUp(player.level()));
+    }
+
+    private static void killByAsphyxia(ServerPlayer player, MedicalProfile profile) {
+        kill(player, profile, DamageSources.asphyxiation(player.level()));
+    }
+
+    private static void killByOverdose(ServerPlayer player, MedicalProfile profile) {
+        kill(player, profile, DamageSources.overdose(player.level()));
+    }
+
+    private static void kill(ServerPlayer player, MedicalProfile profile, DamageSource source) {
         profile.enterDeadState(true);
         if (profile.hasActiveTreatment()) {
             MedicalActionService.cancel(player, "dead");
         }
         creditLastDamagingPlayer(player, profile);
-        player.setHealth(0.0F);
+        player.hurt(source, Float.MAX_VALUE);
     }
 
     private static void creditLastDamagingPlayer(ServerPlayer player, MedicalProfile profile) {

@@ -76,5 +76,13 @@
   "gui.wfmedical.state.healthy": "Healthy",
   "gui.wfmedical.state.critical": "Critical",
   "gui.wfmedical.state.unconscious": "Unconscious",
-  "gui.wfmedical.state.dead": "Dead"
+  "gui.wfmedical.state.dead": "Dead",
+  "death.attack.bleeding_out": "%1$s bled out",
+  "death.attack.bleeding_out.player": "%1$s bled out while fighting %2$s",
+  "death.attack.giving_up": "%1$s gave up",
+  "death.attack.giving_up.player": "%1$s gave up while fighting %2$s",
+  "death.attack.asphyxiation": "%1$s asphyxiated",
+  "death.attack.asphyxiation.player": "%1$s asphyxiated while fighting %2$s",
+  "death.attack.overdose": "%1$s died from an overdose",
+  "death.attack.overdose.player": "%1$s died from an overdose while fighting %2$s"
 }
