@@ -72,6 +72,7 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.tag }}
+          make_latest: false
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: ${{ steps.version.outputs.artifact }}
