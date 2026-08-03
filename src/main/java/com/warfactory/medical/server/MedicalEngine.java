@@ -11,11 +11,15 @@ import com.warfactory.medical.core.PhysiologyParams;
 import com.warfactory.medical.core.limb.Limb;
 import com.warfactory.medical.core.limb.LimbType;
 import com.warfactory.medical.core.trauma.Trauma;
+import com.warfactory.medical.damage.DamageSources;
 import com.warfactory.medical.network.MedicalNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraft.world.damagesource.DamageSource;
 
 import java.util.List;
 import java.util.UUID;
@@ -195,7 +199,7 @@ public final class MedicalEngine {
                 if (next > 1.0F) {
                     player.setHealth(next);
                 } else {
-                    enactEngineDeath(player, profile);
+                    enactEngineDeath(player, profile, DamageSources.overdose(player.level()));
                 }
             }
         }
@@ -341,7 +345,7 @@ public final class MedicalEngine {
     }
 
     private static void killByAsphyxia(ServerPlayer player, MedicalProfile profile) {
-        enactEngineDeath(player, profile);
+        enactEngineDeath(player, profile, DamageSources.asphyxiation(player.level()));
     }
 
     public static void giveUp(ServerPlayer player) {
@@ -356,16 +360,16 @@ public final class MedicalEngine {
         if (!profile.isDowned() || player.getHealth() <= 0.0F) {
             return;
         }
-        enactEngineDeath(player, profile);
+        enactEngineDeath(player, profile, DamageSources.givingUp(player.level()));
     }
 
-    private static void enactEngineDeath(ServerPlayer player, MedicalProfile profile) {
+    private static void enactEngineDeath(ServerPlayer player, MedicalProfile profile, DamageSource source) {
         profile.enterDeadState(true);
         if (profile.hasActiveTreatment()) {
             MedicalActionService.cancel(player, "dead");
         }
         creditLastDamagingPlayer(player, profile);
-        player.setHealth(0.0F);
+        MinecraftForge.EVENT_BUS.post(new LivingDeathEvent(player, source));
     }
 
     private static void creditLastDamagingPlayer(ServerPlayer player, MedicalProfile profile) {
