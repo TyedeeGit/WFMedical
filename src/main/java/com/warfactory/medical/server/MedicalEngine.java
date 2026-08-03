@@ -123,8 +123,7 @@ public final class MedicalEngine {
 
         updateDeathProgress(profile, params);
         if (stats.state() == HealthState.DEAD && player.getHealth() > 0.0F) {
-            creditLastDamagingPlayer(player, profile);
-            player.setHealth(0.0F);
+            killByBleedingOut(player, profile);
         }
 
         if (wasDirty) {
@@ -197,7 +196,7 @@ public final class MedicalEngine {
                 if (next > 1.0F) {
                     player.setHealth(next);
                 } else {
-                    enactEngineDeath(player, profile, DamageSources.overdose(player.level()));
+                    killByOverdose(player, profile);
                 }
             }
         }
@@ -342,10 +341,6 @@ public final class MedicalEngine {
         }
     }
 
-    private static void killByAsphyxia(ServerPlayer player, MedicalProfile profile) {
-        enactEngineDeath(player, profile, DamageSources.asphyxiation(player.level()));
-    }
-
     public static void giveUp(ServerPlayer player) {
         if (player == null || !MedicalConfig.enableGiveUp()) {
             return;
@@ -358,10 +353,26 @@ public final class MedicalEngine {
         if (!profile.isDowned() || player.getHealth() <= 0.0F) {
             return;
         }
-        enactEngineDeath(player, profile, DamageSources.givingUp(player.level()));
+        killByGivingUp(player, profile);
     }
 
-    private static void enactEngineDeath(ServerPlayer player, MedicalProfile profile, DamageSource source) {
+    private static void killByBleedingOut(ServerPlayer player, MedicalProfile profile) {
+        kill(player, profile, DamageSources.bleedingOut(player.level()));
+    }
+
+    private static void killByGivingUp(ServerPlayer player, MedicalProfile profile) {
+        kill(player, profile, DamageSources.givingUp(player.level()));
+    }
+
+    private static void killByAsphyxia(ServerPlayer player, MedicalProfile profile) {
+        kill(player, profile, DamageSources.asphyxiation(player.level()));
+    }
+
+    private static void killByOverdose(ServerPlayer player, MedicalProfile profile) {
+        kill(player, profile, DamageSources.overdose(player.level()));
+    }
+
+    private static void kill(ServerPlayer player, MedicalProfile profile, DamageSource source) {
         profile.enterDeadState(true);
         if (profile.hasActiveTreatment()) {
             MedicalActionService.cancel(player, "dead");
