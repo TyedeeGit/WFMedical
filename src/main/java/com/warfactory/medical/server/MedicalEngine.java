@@ -369,7 +369,7 @@ public final class MedicalEngine {
             MedicalActionService.cancel(player, "dead");
         }
         creditLastDamagingPlayer(player, profile);
-        MinecraftForge.EVENT_BUS.post(new LivingDeathEvent(player, source));
+        player.hurt(source, Float.MAX_VALUE);
     }
 
     private static void creditLastDamagingPlayer(ServerPlayer player, MedicalProfile profile) {
