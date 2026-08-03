@@ -8,6 +8,11 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageType;
 
 public class DamageTypes {
+    public static final ResourceKey<DamageType> BLEEDING_OUT = ResourceKey.create(
+        Registries.DAMAGE_TYPE,
+        new ResourceLocation(WFMedical.MOD_ID, "bleeding_out")
+    );
+
     public static final ResourceKey<DamageType> GIVING_UP = ResourceKey.create(
         Registries.DAMAGE_TYPE,
         new ResourceLocation(WFMedical.MOD_ID, "giving_up")

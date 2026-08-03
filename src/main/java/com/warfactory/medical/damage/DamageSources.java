@@ -7,6 +7,10 @@ import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.level.Level;
 
 public class DamageSources {
+    public static DamageSource bleedingOut(Level level) {
+        return source(level, DamageTypes.BLEEDING_OUT);
+    }
+
     public static DamageSource givingUp(Level level) {
         return source(level, DamageTypes.GIVING_UP);
     }
