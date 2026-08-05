@@ -114,7 +114,7 @@ public final class HitLocation {
                     return 2.5F;
                 }
                 if (limb == LimbType.TORSO) {
-                    return 0.6F;
+                    return 0.3F;
                 }
                 return 0.0F;
             case EXPLOSION:

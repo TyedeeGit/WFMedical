@@ -5,7 +5,6 @@ import com.warfactory.medical.WFMedical;
 import com.warfactory.medical.api.MedicalState;
 import com.warfactory.medical.client.render.HitboxDebugRenderer;
 import com.warfactory.medical.client.screen.MedInteractionScreen;
-import com.warfactory.medical.client.screen.RadialMenuUI;
 import com.warfactory.medical.compat.TaczCompat;
 import com.warfactory.medical.compat.tacz.TaczPoseCaptureClient;
 import com.warfactory.medical.network.ClientMedicalCache;
@@ -68,9 +67,6 @@ public final class MedicalClientEvents {
             } else {
                 MedInteractionScreen.open();
             }
-        }
-        while (MedicalKeyMappings.OPEN_RADIAL.consumeClick()) {
-            RadialMenuUI.open();
         }
         while (MedicalKeyMappings.TOGGLE_DEBUG.consumeClick()) {
             ClientMedicalCache.toggleDebug();

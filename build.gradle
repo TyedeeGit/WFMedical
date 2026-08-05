@@ -68,7 +68,6 @@ minecraft {
 
         server {
             property 'forge.enabledGameTestNamespaces', mod_id
-            args '--nogui'
         }
 
         gameTestServer {
@@ -129,7 +128,7 @@ tasks.register('runAll') {
         def procs = []
         def spawn = { String runTask ->
             def logFile = new File(project.projectDir, "run/${runTask}.out.log")
-            def proc = new ProcessBuilder('./gradlew', runTask, '--console=plain')
+            def proc = new ProcessBuilder('./gradlew', runTask)
                     .directory(project.projectDir)
                     .redirectErrorStream(true)
                     .redirectOutput(logFile)
