@@ -3,6 +3,7 @@ package com.warfactory.medical.client;
 import com.lowdragmc.lowdraglib.gui.modular.ModularUIGuiContainer;
 import com.warfactory.medical.WFMedical;
 import com.warfactory.medical.api.MedicalState;
+import com.warfactory.medical.config.MedicalConfig;
 import com.warfactory.medical.client.render.HitboxDebugRenderer;
 import com.warfactory.medical.client.screen.MedInteractionScreen;
 import com.warfactory.medical.compat.TaczCompat;
@@ -18,6 +19,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
@@ -124,10 +127,27 @@ public final class MedicalClientEvents {
             targetSheetPoll = 0;
             return;
         }
+        if (targetOutOfReach(mc, tid)) {
+            mc.setScreen(null);
+            MedInteractionScreen.clearTarget();
+            targetSheetPoll = 0;
+            return;
+        }
         if (++targetSheetPoll >= TARGET_SHEET_POLL_TICKS) {
             targetSheetPoll = 0;
             MedicalNetworking.sendToServer(new TargetSheetRequestPacket(tid));
         }
+    }
+
+    private static boolean targetOutOfReach(Minecraft mc, int targetId) {
+        if (mc.level == null || mc.player == null) {
+            return true;
+        }
+        Entity e = mc.level.getEntity(targetId);
+        if (!(e instanceof LivingEntity le) || !le.isAlive()) {
+            return true;
+        }
+        return mc.player.distanceToSqr(le) > MedicalConfig.treatReachSqr();
     }
 
     private static void keepRespawnButtonUsable(Minecraft mc) {

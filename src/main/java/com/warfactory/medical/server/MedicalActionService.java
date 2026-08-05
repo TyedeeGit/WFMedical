@@ -31,8 +31,6 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 public final class MedicalActionService {
 
-    private static final double REACH_SQR = 6.0D * 6.0D;
-
     private MedicalActionService() {
     }
 
@@ -71,12 +69,14 @@ public final class MedicalActionService {
 
         LivingEntity target;
         IMedicalData targetData;
-        if (injectable || targetId < 0 || targetId == actor.getId()) {
+        if (medical.isSelfOnly() || targetId < 0 || targetId == actor.getId()) {
+            // Self-only items (oral meds) always dose the user, regardless of who they were aiming at.
             target = actor;
             targetData = actorData;
         } else {
             target = resolveOtherTarget(actor, targetId);
             if (target == null) {
+                actor.displayClientMessage(Component.translatable("gui.wfmedical.treat.out_of_reach"), true);
                 return false;
             }
             targetData = medicalDataOf(target);
@@ -211,7 +211,7 @@ public final class MedicalActionService {
 
         boolean applied;
         if (injectable) {
-            applied = SubstanceService.inject(actor, ((InjectableItem) item).getSubstance());
+            applied = SubstanceService.inject(actor, target, targetData, ((InjectableItem) item).getSubstance());
         } else {
             applied = TreatmentService.applyTargeted(targetData, actor.level().getGameTime(),
                     medical.getTreatment(), actorProfile.getActiveLimb());
@@ -362,7 +362,7 @@ public final class MedicalActionService {
         if (!(e instanceof LivingEntity le) || !le.isAlive()) {
             return null;
         }
-        if (actor.distanceToSqr(le) > REACH_SQR) {
+        if (actor.distanceToSqr(le) > MedicalConfig.treatReachSqr()) {
             return null;
         }
         return le;

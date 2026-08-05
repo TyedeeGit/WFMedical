@@ -40,8 +40,6 @@ import net.minecraftforge.registries.ForgeRegistries;
 @Mod.EventBusSubscriber(modid = WFMedical.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class TreatmentInteractions {
 
-    private static final double TARGET_PICK_REACH = 4.5D;
-
     private static int lockedSlot = -1;
     private static boolean wasActive;
 
@@ -78,15 +76,18 @@ public final class TreatmentInteractions {
         if (itemId == null) {
             return;
         }
+        // Self-only items (oral meds) always dose the user; everything else may target an aimed-at player.
+        boolean selfOnly = item instanceof MedicalItem m && m.isSelfOnly();
+        int targetId = selfOnly ? -1 : pickTargetId(mc, player);
         if (item instanceof InjectableItem) {
-            sendAction(itemId, null, -1);
+            // A syringe is a whole-body jab (no limb) -- dose self or the targeted player directly.
+            sendAction(itemId, null, targetId);
             return;
         }
         if (!(item instanceof MedicalItem medical)) {
             return;
         }
         Treatment treatment = medical.getTreatment();
-        int targetId = pickTargetId(mc, player);
         if (treatment == null || treatment.action().isGlobal()) {
             sendAction(itemId, null, targetId);
             return;
@@ -165,19 +166,22 @@ public final class TreatmentInteractions {
     }
 
     private static int pickTargetId(Minecraft mc, LocalPlayer player) {
+        double reach = MedicalConfig.treatReachBlocks();
+        double reachSqr = reach * reach;
         HitResult hr = mc.hitResult;
         if (hr instanceof EntityHitResult ehr
-                && ehr.getEntity() instanceof LivingEntity le && le != player && isTargetable(le)) {
+                && ehr.getEntity() instanceof LivingEntity le && le != player && isTargetable(le)
+                && player.distanceToSqr(le) <= reachSqr) {
             return le.getId();
         }
         Vec3 eye = player.getEyePosition();
         Vec3 view = player.getViewVector(1.0F);
-        Vec3 end = eye.add(view.scale(TARGET_PICK_REACH));
-        AABB sweep = player.getBoundingBox().expandTowards(view.scale(TARGET_PICK_REACH)).inflate(1.0D);
+        Vec3 end = eye.add(view.scale(reach));
+        AABB sweep = player.getBoundingBox().expandTowards(view.scale(reach)).inflate(1.0D);
         EntityHitResult ray = ProjectileUtil.getEntityHitResult(player, eye, end, sweep,
                 e -> e != player && e instanceof LivingEntity le && isTargetable(le),
-                TARGET_PICK_REACH * TARGET_PICK_REACH);
-        if (ray != null && ray.getEntity() instanceof LivingEntity le) {
+                reachSqr);
+        if (ray != null && ray.getEntity() instanceof LivingEntity le && player.distanceToSqr(le) <= reachSqr) {
             return le.getId();
         }
         return -1;

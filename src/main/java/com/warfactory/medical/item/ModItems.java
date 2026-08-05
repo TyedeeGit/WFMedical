@@ -34,9 +34,9 @@ public final class ModItems {
     public static final RegistryObject<Item> BLOOD_BAG = medical("blood_bag",
             new Treatment(TreatmentAction.RESTORE_BLOOD,
                     cats(), 0.0F, 1000.0D, 120, false));
-    public static final RegistryObject<Item> PAINKILLERS = medical("painkillers",
+    public static final RegistryObject<Item> PAINKILLERS = oral("painkillers",
             new Treatment(TreatmentAction.REDUCE_PAIN,
-                    cats(), 0.5F, 0.0D, 30, false), true);
+                    cats(), 0.5F, 0.0D, 30, false));
     public static final RegistryObject<Item> LOCAL_ANESTHETIC = medical("local_anesthetic",
             new Treatment(TreatmentAction.NUMB_LIMB,
                     cats(), 0.9F, 0.0D, 50, false), UseAnim.SPEAR);
@@ -71,6 +71,12 @@ public final class ModItems {
     private static RegistryObject<Item> medical(String name, Treatment treatment, boolean eatAnim) {
         return ITEMS.register(name,
                 () -> new MedicalItem(new Item.Properties().stacksTo(16), treatment, eatAnim));
+    }
+
+    // Oral medication (swallowed): eat animation + self-only by default (cannot be applied to another player).
+    private static RegistryObject<Item> oral(String name, Treatment treatment) {
+        return ITEMS.register(name,
+                () -> new MedicalItem(new Item.Properties().stacksTo(16), treatment, true).selfOnly());
     }
 
     private static RegistryObject<Item> medical(String name, Treatment treatment, UseAnim useAnim) {

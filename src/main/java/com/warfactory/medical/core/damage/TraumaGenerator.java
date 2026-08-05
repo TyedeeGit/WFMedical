@@ -1,5 +1,6 @@
 package com.warfactory.medical.core.damage;
 
+import com.warfactory.medical.config.MedicalConfig;
 import com.warfactory.medical.core.limb.LimbType;
 import com.warfactory.medical.core.trauma.Trauma;
 import com.warfactory.medical.core.trauma.TraumaCategory;
@@ -24,10 +25,13 @@ public final class TraumaGenerator {
     private static final String CHEMICAL_BURN = "chemical_burn";
     private static final String BLUNT_FORCE_TRAUMA = "blunt_force_trauma";
 
-    // Fall damage reaching us is roughly (fallDistance - 3) health points, so ~7 energy ~= a 10-block fall:
-    // below that a fall is pure blunt-force trauma (soft, self-healing, no bleed); at/above it a bone may break.
-    private static final float FALL_FRACTURE_ENERGY = 7.0F;
+    // Fall damage reaching us is roughly (fallDistance - 3) health points, so ~2 energy ~= a 5-block fall and
+    // ~7 energy ~= a 10-block fall. The fracture floor is configurable (fallFractureMinBlocks, default 5 blocks):
+    // below it a fall is pure blunt-force trauma (soft, self-healing, no bleed, no crush); at/above it a bone
+    // may break, with the chance ramping up over this energy range.
     private static final float FALL_FRACTURE_RANGE = 16.0F;
+    // Vanilla fall damage is roughly (fallDistance - 3), so convert the block floor to a fall-damage energy.
+    private static final float FALL_DAMAGE_FREE_BLOCKS = 3.0F;
 
     private static final float MAJOR_ENERGY = 4.0F;
 
@@ -69,9 +73,10 @@ public final class TraumaGenerator {
                 // Falls are blunt force: soft-tissue trauma that regenerates on its own and never bleeds,
                 // but it costs current health (~12 HP per severity). Energy ~= fall damage ~= fallDistance-3,
                 // so e*0.085 makes a 10-block fall (e~7) ~0.6 severity ~= a vanilla ~7 HP hit.
-                // Only a hard enough landing (>= FALL_FRACTURE_ENERGY, ~10 blocks) risks breaking a bone.
+                // A landing at/above fallFractureMinBlocks (default 5 blocks) additionally risks breaking a bone.
                 float blunt = clampF(e * 0.085F, 0.08F, 1.0F);
                 add(out, registry, BLUNT_FORCE_TRAUMA, TraumaCategory.BRUISE, limb, blunt, nowTick);
+                // A fall is never a crush injury; the only escalation past bruising is a possible fracture.
                 maybeFracture(out, registry, limb, nowTick, rand, fallFractureChance(limb, e));
                 return out;
             }
@@ -136,10 +141,11 @@ public final class TraumaGenerator {
     }
 
     private static float fallFractureChance(LimbType limb, float energy) {
-        if (energy < FALL_FRACTURE_ENERGY) {
+        float thresholdEnergy = Math.max(0.0F, (float) MedicalConfig.fallFractureMinBlocks() - FALL_DAMAGE_FREE_BLOCKS);
+        if (energy < thresholdEnergy) {
             return 0.0F;
         }
-        float t = clampF((energy - FALL_FRACTURE_ENERGY) / FALL_FRACTURE_RANGE, 0.0F, 1.0F);
+        float t = clampF((energy - thresholdEnergy) / FALL_FRACTURE_RANGE, 0.0F, 1.0F);
         float chance = 0.15F + 0.7F * t;
         if (!limb.isLeg()) {
             chance *= 0.4F;

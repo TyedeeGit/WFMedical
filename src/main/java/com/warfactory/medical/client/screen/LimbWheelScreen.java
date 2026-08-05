@@ -7,6 +7,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.warfactory.medical.client.TreatmentInteractions;
+import com.warfactory.medical.config.MedicalConfig;
 import com.warfactory.medical.core.limb.LimbType;
 import com.warfactory.medical.network.MedicalSyncPacket.LimbSummary;
 import net.minecraft.Util;
@@ -18,6 +19,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -85,7 +87,7 @@ public final class LimbWheelScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        if (entries.isEmpty() || !stillHoldingItem()) {
+        if (entries.isEmpty() || !stillHoldingItem() || targetOutOfReach()) {
             onClose();
             return;
         }
@@ -311,6 +313,21 @@ public final class LimbWheelScreen extends Screen {
         ps.scale(scale, scale, 1.0F);
         g.drawCenteredString(this.font, text, 0, -this.font.lineHeight / 2, color);
         ps.popPose();
+    }
+
+    private boolean targetOutOfReach() {
+        if (targetEntityId < 0) {
+            return false;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null) {
+            return true;
+        }
+        Entity e = mc.level.getEntity(targetEntityId);
+        if (!(e instanceof LivingEntity le) || !le.isAlive()) {
+            return true;
+        }
+        return mc.player.distanceToSqr(le) > MedicalConfig.treatReachSqr();
     }
 
     private boolean stillHoldingItem() {

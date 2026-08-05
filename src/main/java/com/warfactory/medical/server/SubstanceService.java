@@ -11,32 +11,46 @@ import com.warfactory.medical.core.substance.Substance;
 import com.warfactory.medical.core.substance.SubstanceRegistry;
 import com.warfactory.medical.network.MedicalNetworking;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
 
 public final class SubstanceService {
 
     private SubstanceService() {
     }
 
+    /** Self-injection convenience: inject {@code player} with the substance. */
     public static boolean inject(ServerPlayer player, Substance substance) {
-        if (player == null || substance == null) {
+        if (player == null) {
+            return false;
+        }
+        IMedicalData data = MedicalCapabilities.get(player);
+        if (data == null) {
+            return false;
+        }
+        return inject(player, player, data, substance);
+    }
+
+    /**
+     * Inject {@code target} with the substance (the {@code actor} is the one performing the jab; for a
+     * self-injection actor == target). Effects and sync land on the target, not the actor.
+     */
+    public static boolean inject(ServerPlayer actor, LivingEntity target, IMedicalData targetData, Substance substance) {
+        if (actor == null || target == null || targetData == null || substance == null) {
             return false;
         }
         if (!MedicalConfig.enableInjectables()) {
             return false;
         }
-        if ((player.isCreative() || player.isSpectator()) && MedicalConfig.effectImmuneInCreative()) {
+        if (target instanceof ServerPlayer tp
+                && (tp.isCreative() || tp.isSpectator()) && MedicalConfig.effectImmuneInCreative()) {
             return false;
         }
         Substance live = SubstanceRegistry.active().get(substance.itemId());
         if (live != null) {
             substance = live;
         }
-        IMedicalData data = MedicalCapabilities.get(player);
-        if (data == null) {
-            return false;
-        }
-        MedicalProfile profile = data.getProfile();
-        long now = player.level().getGameTime();
+        MedicalProfile profile = targetData.getProfile();
+        long now = target.level().getGameTime();
 
         if (substance.antidote()) {
             profile.setDrugLoad(Math.max(0.0F, profile.getDrugLoad() - substance.reversalAmount()));
@@ -69,7 +83,7 @@ public final class SubstanceService {
                 }
             }
             if (profile.getDrugLoad() >= substance.overdoseThreshold()) {
-                if (shouldStartAsphyxia(player, profile)) {
+                if (shouldStartAsphyxia(target, profile)) {
                     profile.startAsphyxia(now);
                 } else {
                     int grace = MedicalConfig.blackoutGraceTicks();
@@ -88,19 +102,23 @@ public final class SubstanceService {
         }
 
         profile.markDirty();
-        data.bumpRevision();
+        targetData.bumpRevision();
 
         PhysiologyParams params = MedicalConfig.toPhysiologyParams();
         DerivedStats stats = profile.recompute(params);
-        if (!((player.isCreative() || player.isSpectator()) && MedicalConfig.effectImmuneInCreative())) {
-            MedicalEffects.apply(player, stats, MedicalConfig.manageNaturalRegen());
+        if (target instanceof ServerPlayer tp) {
+            if (!((tp.isCreative() || tp.isSpectator()) && MedicalConfig.effectImmuneInCreative())) {
+                MedicalEffects.apply(tp, stats, MedicalConfig.manageNaturalRegen());
+            }
+            MedicalNetworking.sendFull(tp, profile);
+            targetData.markSynced();
+        } else {
+            MedicalEffects.applyToBody(target, stats);
         }
-        MedicalNetworking.sendFull(player, profile);
-        data.markSynced();
         return true;
     }
 
-    private static boolean shouldStartAsphyxia(ServerPlayer player, MedicalProfile profile) {
+    private static boolean shouldStartAsphyxia(LivingEntity target, MedicalProfile profile) {
         if (!MedicalConfig.asphyxiaEnabled()) {
             return false;
         }
@@ -116,6 +134,6 @@ public final class SubstanceService {
                 && load >= MedicalConfig.overdoseLethalThreshold()) {
             return false;
         }
-        return player.getRandom().nextDouble() < MedicalConfig.asphyxiaChance();
+        return target.getRandom().nextDouble() < MedicalConfig.asphyxiaChance();
     }
 }

@@ -82,11 +82,18 @@ public final class MedicalEngine {
             MedicalActionService.tick(player, profile, nowTick);
         }
 
-        if (MedicalConfig.enableBleeding()) {
-            double bleeding = profile.cached().totalBleeding();
-            if (bleeding > 0.0D) {
-                profile.setBloodMl(profile.getBloodMl() - bleeding * interval);
-            }
+        double bleeding = MedicalConfig.enableBleeding() ? profile.cached().totalBleeding() : 0.0D;
+        if (bleeding > 0.0D) {
+            profile.setBloodMl(profile.getBloodMl() - bleeding * interval);
+        }
+
+        double bloodRegenPerSecond = MedicalConfig.bloodRegenMlPerSecond();
+        // Only regenerate once bleeding is fully under control: any active haemorrhage (even one merely
+        // slowed by a tourniquet, which never drops to zero) pauses regen entirely. Stop the bleed first,
+        // then the body rebuilds volume. setBloodMl clamps at max, so this stops cleanly once topped up.
+        if (bloodRegenPerSecond > 0.0D && bleeding <= 0.0D && profile.getBloodMl() < profile.getMaxBloodMl()) {
+            // interval is ticks since the last update; 20 ticks = 1s.
+            profile.setBloodMl(profile.getBloodMl() + bloodRegenPerSecond / 20.0D * interval);
         }
 
         advanceTrauma(profile, interval);
@@ -419,6 +426,11 @@ public final class MedicalEngine {
             return true;
         }
         if (profile.getBloodMl() < MedicalConfig.bloodLowFraction() * profile.getMaxBloodMl()) {
+            return true;
+        }
+        // Keep ticking a not-yet-full player so natural blood regen can top them back up to max (the
+        // blood-low check above only covers the deep-loss band; regen also needs to run in 60%..100%).
+        if (MedicalConfig.bloodRegenMlPerSecond() > 0.0D && profile.getBloodMl() < profile.getMaxBloodMl()) {
             return true;
         }
         return c.state() != HealthState.HEALTHY;

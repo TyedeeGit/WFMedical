@@ -1,7 +1,6 @@
 package com.warfactory.medical.client.screen;
 
 import com.lowdragmc.lowdraglib.gui.texture.ColorBorderTexture;
-import com.lowdragmc.lowdraglib.gui.texture.ColorRectTexture;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.util.ClickData;
 import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
@@ -190,13 +189,17 @@ public final class MedicalUIParts {
 
     public static void addLimbTile(WidgetGroup group, LimbType limb, int tx, int ty, int tw, int th,
                                    Function<LimbType, LimbSummary> source) {
+        addLimbTile(group, limb, tx, ty, tw, th, source, ClientPlayerSkins.forEntity(-1));
+    }
+
+    public static void addLimbTile(WidgetGroup group, LimbType limb, int tx, int ty, int tw, int th,
+                                   Function<LimbType, LimbSummary> source, ClientPlayerSkins.Skin skin) {
         if (tw <= 0 || th <= 0) {
             return;
         }
 
         ImageWidget fill = new ImageWidget(tx, ty, tw, th,
-                () ->
-                        new ColorRectTexture(limbColor(source.apply(limb).healthPercent())));
+                ClientPlayerSkins.limbTile(limb, skin, () -> source.apply(limb).healthPercent()));
         fill.setClientSideWidget();
         group.addWidget(fill);
 

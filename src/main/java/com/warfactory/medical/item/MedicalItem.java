@@ -1,9 +1,11 @@
 package com.warfactory.medical.item;
 
 import com.warfactory.medical.client.render.MedicalItemRenderer;
+import com.warfactory.medical.config.MedicalConfig;
 import com.warfactory.medical.core.trauma.TraumaCategory;
 import com.warfactory.medical.core.treatment.Treatment;
 import net.minecraft.ChatFormatting;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -16,6 +18,7 @@ import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.UseAnim;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.client.extensions.common.IClientItemExtensions;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -27,6 +30,9 @@ public class MedicalItem extends Item {
 
     private final Treatment treatment;
     private final UseAnim useAnim;
+    // Oral meds (pills you swallow) can only be taken by yourself; set once at registration. Everything else
+    // defaults to being applicable to another player. Overridable per item via config (see isSelfOnly()).
+    private boolean selfOnlyDefault;
 
     public MedicalItem(Properties properties, Treatment treatment) {
         this(properties, treatment, UseAnim.BOW);
@@ -44,6 +50,26 @@ public class MedicalItem extends Item {
 
     public Treatment getTreatment() {
         return treatment;
+    }
+
+    /** Mark this item as self-only by default (oral medication). Fluent so it can be chained at registration. */
+    public MedicalItem selfOnly() {
+        this.selfOnlyDefault = true;
+        return this;
+    }
+
+    public boolean isSelfOnlyByDefault() {
+        return selfOnlyDefault;
+    }
+
+    /**
+     * Whether this item may only be applied to the user themselves (never to another player). Honors the
+     * per-item {@code treatSelfOnlyOverrides} config; falls back to the item's built-in default.
+     */
+    public boolean isSelfOnly() {
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(this);
+        Boolean override = id == null ? null : MedicalConfig.treatSelfOnlyOverride(id);
+        return override != null ? override : selfOnlyDefault;
     }
 
     @Override
@@ -75,6 +101,10 @@ public class MedicalItem extends Item {
             tooltip.add(Component.translatable("tooltip.wfmedical.apply_time",
                     formatSeconds(treatment.useDurationTicks())).withStyle(ChatFormatting.DARK_GRAY));
         }
+        tooltip.add(Component.translatable(isSelfOnly()
+                        ? "tooltip.wfmedical.self_only"
+                        : "tooltip.wfmedical.usable_on_others")
+                .withStyle(isSelfOnly() ? ChatFormatting.GOLD : ChatFormatting.DARK_AQUA));
         super.appendHoverText(stack, level, tooltip, flag);
     }
 

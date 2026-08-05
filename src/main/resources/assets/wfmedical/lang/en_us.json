@@ -61,6 +61,7 @@
   "gui.wfmedical.treat.no_effect": "Treatment had no effect",
   "gui.wfmedical.treat.applied": "Treatment applied",
   "gui.wfmedical.treat.busy": "Already being treated",
+  "gui.wfmedical.treat.out_of_reach": "Too far away to treat",
   "gui.wfmedical.wheel.title": "Select Limb",
   "gui.wfmedical.wheel.select": "Select a limb",
   "gui.wfmedical.wheel.self": "Yourself",
@@ -100,6 +101,8 @@
   "tooltip.wfmedical.treats": "Works on: %s",
   "tooltip.wfmedical.apply_time": "Apply time: %ss",
   "tooltip.wfmedical.blood_restore": "Restores %s mL blood",
+  "tooltip.wfmedical.self_only": "Self-use only",
+  "tooltip.wfmedical.usable_on_others": "Can be used on others",
 
   "tooltip.wfmedical.category.bruise": "bruises",
   "tooltip.wfmedical.category.laceration": "cuts",

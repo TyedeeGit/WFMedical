@@ -63,6 +63,8 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.DoubleValue CLOTTING_BOOST_RATE_MULTIPLIER;
     private static final ForgeConfigSpec.IntValue CLOTTING_AGENT_DURATION_TICKS;
     private static final ForgeConfigSpec.IntValue DEATH_ATTRIBUTION_WINDOW_TICKS;
+    private static final ForgeConfigSpec.DoubleValue TREAT_REACH_BLOCKS;
+    private static final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> TREAT_SELF_ONLY_OVERRIDES;
     private static final ForgeConfigSpec.BooleanValue GEOMETRIC_HIT_LOCATION;
     private static final ForgeConfigSpec.BooleanValue POSE_AWARE_ARMS;
     private static final ForgeConfigSpec.DoubleValue HEAD_BAND_BOTTOM;
@@ -85,7 +87,9 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.DoubleValue BLEEDING_SELF_HEAL_THRESHOLD;
     private static final ForgeConfigSpec.DoubleValue BLEEDING_SELF_HEAL_RATE;
     private static final ForgeConfigSpec.DoubleValue FRACTURE_SELF_HEAL_MINUTES;
+    private static final ForgeConfigSpec.DoubleValue BLOOD_REGEN_ML_PER_SECOND;
     private static final ForgeConfigSpec.DoubleValue UNARMED_MAJOR_CHANCE;
+    private static final ForgeConfigSpec.DoubleValue FALL_FRACTURE_MIN_BLOCKS;
     private static final ForgeConfigSpec.BooleanValue PAIN_SWAY_ENABLED;
     private static final ForgeConfigSpec.DoubleValue PAIN_SWAY_STRENGTH;
     private static final ForgeConfigSpec.DoubleValue BROKEN_ARM_AIM_SWAY;
@@ -191,6 +195,15 @@ public final class MedicalConfig {
                         + "untreated (a partial fracture heals proportionally faster). Splinting/treating it is "
                         + "faster. 0 = fractures never self-heal (they worsen until treated). Default 20.")
                 .defineInRange("fractureSelfHealMinutes", 20.0D, 0.0D, 600.0D);
+        BLOOD_REGEN_ML_PER_SECOND = b
+                .comment("Millilitres of blood the body slowly regenerates PER SECOND on its own (natural "
+                        + "haematopoiesis), climbing back toward maxBloodMl. Regen is PAUSED entirely while ANY "
+                        + "wound is actively bleeding -- including one merely slowed by a tourniquet (which never "
+                        + "fully stops the flow) -- so you must first stop the bleed (bandage / clot / suture) "
+                        + "before the body starts rebuilding volume. Blood bags / medkits remain the fast way to "
+                        + "restore volume. 0 = blood never regenerates on its own (only treatment restores it). "
+                        + "Default 1.0 (topping up a full 5000 ml pool takes ~83 min).")
+                .defineInRange("bloodRegenMlPerSecond", 1.0D, 0.0D, 1000.0D);
         b.pop();
 
         b.push("pain");
@@ -400,6 +413,13 @@ public final class MedicalConfig {
                         + "bleed (major trauma) instead of just a bruise. Punches to any other limb are always "
                         + "just bruising. Default 0.15.")
                 .defineInRange("unarmedMajorChance", 0.15D, 0.0D, 1.0D);
+        FALL_FRACTURE_MIN_BLOCKS = b
+                .comment("Minimum fall height (in blocks) at which a fall can start breaking bones. Below this a "
+                        + "fall is pure soft blunt-force trauma (bruising that self-heals, never bleeds, no crush) "
+                        + "-- it costs health but cannot fracture. At/above it a bad landing has a rising chance to "
+                        + "fracture a limb (legs far more than arms); a fall NEVER causes a crush injury regardless "
+                        + "of height. Default 5.0.")
+                .defineInRange("fallFractureMinBlocks", 5.0D, 0.0D, 256.0D);
         PAIN_SWAY_ENABLED = b
                 .comment("If true, high pain makes the local player's aim drift/tremble (harder to aim). Client-side.")
                 .define("painSwayEnabled", true);
@@ -444,6 +464,22 @@ public final class MedicalConfig {
                         + "attacker after 100 ticks, so this must be long enough to cover a full bleed-out. "
                         + "Default 6000 (5 minutes).")
                 .defineInRange("deathAttributionWindowTicks", 6000, 0, 432000);
+        TREAT_REACH_BLOCKS = b
+                .comment("Reach (in blocks) for treating ANOTHER player: how close you must be to aim at them and "
+                        + "open the treatment wheel / examination sheet, and the distance past which an open "
+                        + "menu auto-closes and an in-progress treatment can no longer be applied. Used by the "
+                        + "client target-pick, the server-side validation, and the menu auto-close so they all "
+                        + "agree. Default 3.0.")
+                .defineInRange("treatReachBlocks", 3.0D, 1.0D, 16.0D);
+        TREAT_SELF_ONLY_OVERRIDES = b
+                .comment("Per-item override for whether a medical item is SELF-ONLY (can only be used on yourself, "
+                        + "never applied to another player). Each entry is \"<itemId>=true|false\" -- e.g. "
+                        + "\"wfmedical:painkillers=false\" to let a medic dose a teammate, or \"wfmedical:medkit=true\" "
+                        + "to forbid treating others with a medkit. Items not listed use their built-in default: "
+                        + "only ORAL medication (painkillers) is self-only by default; everything else (bandages, "
+                        + "blood bags, syringes, ...) can be applied to others.")
+                .defineList("treatSelfOnlyOverrides", java.util.List.of(),
+                        o -> o instanceof String s && s.indexOf('=') > 0);
         OVERDOSE_LETHAL_ENABLED = b
                 .comment("If true, a severe overdose (drug load >= overdoseLethalThreshold) drains health during the overdose unconsciousness.")
                 .define("overdoseLethalEnabled", true);
@@ -877,8 +913,16 @@ public final class MedicalConfig {
         return FRACTURE_SELF_HEAL_MINUTES.get();
     }
 
+    public static double bloodRegenMlPerSecond() {
+        return BLOOD_REGEN_ML_PER_SECOND.get();
+    }
+
     public static double unarmedMajorChance() {
         return UNARMED_MAJOR_CHANCE.get();
+    }
+
+    public static double fallFractureMinBlocks() {
+        return FALL_FRACTURE_MIN_BLOCKS.get();
     }
 
     public static boolean painSwayEnabled() {
@@ -997,6 +1041,15 @@ public final class MedicalConfig {
 
     public static int deathAttributionWindowTicks() {
         return DEATH_ATTRIBUTION_WINDOW_TICKS.get();
+    }
+
+    public static double treatReachBlocks() {
+        return TREAT_REACH_BLOCKS.get();
+    }
+
+    public static double treatReachSqr() {
+        double r = TREAT_REACH_BLOCKS.get();
+        return r * r;
     }
 
     public static boolean overdoseLethalEnabled() {
@@ -1149,6 +1202,49 @@ public final class MedicalConfig {
             cachedDamageRaw = raw;
         }
         return cachedDamageMap;
+    }
+
+    private static java.util.List<? extends String> cachedSelfOnlyRaw;
+    private static java.util.Map<String, Boolean> cachedSelfOnlyMap = java.util.Collections.emptyMap();
+
+    /**
+     * Per-item self-only override, or null if the item is not listed (use its built-in default). Backs the
+     * data-driven {@code treatSelfOnlyOverrides} config.
+     */
+    public static Boolean treatSelfOnlyOverride(net.minecraft.resources.ResourceLocation id) {
+        if (id == null) {
+            return null;
+        }
+        return treatSelfOnlyMap().get(id.toString());
+    }
+
+    private static java.util.Map<String, Boolean> treatSelfOnlyMap() {
+        java.util.List<? extends String> raw;
+        try {
+            raw = TREAT_SELF_ONLY_OVERRIDES.get();
+        } catch (IllegalStateException notLoaded) {
+            return java.util.Collections.emptyMap();
+        }
+        if (raw != cachedSelfOnlyRaw) {
+            java.util.Map<String, Boolean> parsed = new java.util.HashMap<>();
+            for (String entry : raw) {
+                if (entry == null) {
+                    continue;
+                }
+                int eq = entry.indexOf('=');
+                if (eq <= 0 || eq >= entry.length() - 1) {
+                    continue;
+                }
+                String k = entry.substring(0, eq).trim();
+                String v = entry.substring(eq + 1).trim();
+                if (!k.isEmpty() && !v.isEmpty()) {
+                    parsed.put(k, Boolean.parseBoolean(v));
+                }
+            }
+            cachedSelfOnlyMap = parsed;
+            cachedSelfOnlyRaw = raw;
+        }
+        return cachedSelfOnlyMap;
     }
 
     public static HitRegMode hitRegistrationMode() {

@@ -212,9 +212,10 @@ public final class MedInteractionScreen {
 
 
     private static void addBodyDiagram(WidgetGroup root) {
+        ClientPlayerSkins.Skin skin = ClientPlayerSkins.forEntity(targetId);
         for (LimbTile tile : BODY_TILES) {
             MedicalUIParts.addLimbTile(root, tile.limb(), tile.x(), tile.y(), tile.w(), tile.h(),
-                    MedInteractionScreen::sheetLimb);
+                    MedInteractionScreen::sheetLimb, skin);
         }
     }
 
