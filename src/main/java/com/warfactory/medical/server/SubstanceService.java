@@ -93,7 +93,7 @@ public final class SubstanceService {
         PhysiologyParams params = MedicalConfig.toPhysiologyParams();
         DerivedStats stats = profile.recompute(params);
         if (!((player.isCreative() || player.isSpectator()) && MedicalConfig.effectImmuneInCreative())) {
-            MedicalEffects.apply(player, stats);
+            MedicalEffects.apply(player, stats, MedicalConfig.manageNaturalRegen());
         }
         MedicalNetworking.sendFull(player, profile);
         data.markSynced();

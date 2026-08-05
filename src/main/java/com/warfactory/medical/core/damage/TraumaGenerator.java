@@ -22,9 +22,11 @@ public final class TraumaGenerator {
     private static final String CRUSH_INJURY = "crush_injury";
     private static final String RADIATION_BURN = "radiation_burn";
     private static final String CHEMICAL_BURN = "chemical_burn";
+    private static final String BLUNT_FORCE_TRAUMA = "blunt_force_trauma";
 
-    private static final float FALL_IMPACT_ENERGY = 2.0F;
-    private static final float FALL_FRACTURE_ENERGY = 5.0F;
+    // Fall damage reaching us is roughly (fallDistance - 3) health points, so ~7 energy ~= a 10-block fall:
+    // below that a fall is pure blunt-force trauma (soft, self-healing, no bleed); at/above it a bone may break.
+    private static final float FALL_FRACTURE_ENERGY = 7.0F;
     private static final float FALL_FRACTURE_RANGE = 16.0F;
 
     private static final float MAJOR_ENERGY = 4.0F;
@@ -64,17 +66,18 @@ public final class TraumaGenerator {
                 return out;
             }
             case FALL -> {
-                if (e < FALL_IMPACT_ENERGY) {
-                    add(out, registry, BRUISE, TraumaCategory.BRUISE, limb, 0.6F * energyFactor, nowTick);
-                    return out;
-                }
-                float crush = clampF(0.45F + (e - FALL_IMPACT_ENERGY) * 0.06F, 0.45F, 1.25F);
-                add(out, registry, CRUSH_INJURY, TraumaCategory.CRUSH_INJURY, limb, crush, nowTick);
+                // Falls are blunt force: soft-tissue trauma that regenerates on its own and never bleeds,
+                // but it costs current health (~12 HP per severity). Energy ~= fall damage ~= fallDistance-3,
+                // so e*0.085 makes a 10-block fall (e~7) ~0.6 severity ~= a vanilla ~7 HP hit.
+                // Only a hard enough landing (>= FALL_FRACTURE_ENERGY, ~10 blocks) risks breaking a bone.
+                float blunt = clampF(e * 0.085F, 0.08F, 1.0F);
+                add(out, registry, BLUNT_FORCE_TRAUMA, TraumaCategory.BRUISE, limb, blunt, nowTick);
                 maybeFracture(out, registry, limb, nowTick, rand, fallFractureChance(limb, e));
                 return out;
             }
             case UNARMED -> {
-                add(out, registry, BRUISE, TraumaCategory.BRUISE, limb, 0.6F, nowTick);
+                // Fists are blunt force too -- a light current-health hit.
+                add(out, registry, BLUNT_FORCE_TRAUMA, TraumaCategory.BRUISE, limb, 0.12F, nowTick);
                 return out;
             }
             default -> {
@@ -112,7 +115,8 @@ public final class TraumaGenerator {
                     }
                     maybeFracture(out, registry, limb, nowTick, rand, fractureChance(category, limb, energyFactor));
                 } else if (impact) {
-                    add(out, registry, BRUISE, TraumaCategory.BRUISE, limb, 0.5F, nowTick);
+                    // Light blunt blows (fists, weak bonks) are blunt force, not open wounds.
+                    add(out, registry, BLUNT_FORCE_TRAUMA, TraumaCategory.BRUISE, limb, 0.15F, nowTick);
                 } else {
                     add(out, registry, LACERATION_SMALL, TraumaCategory.LACERATION, limb, 0.45F + 0.08F * e, nowTick);
                 }

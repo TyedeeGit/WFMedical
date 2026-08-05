@@ -1452,8 +1452,9 @@ public final class WFMedicalCommands {
                             .append(" sev=").append(fmt(t.getSeverity()))
                             .append(t.isMinor() ? " [minor]" : " [major]")
                             .append(" treated=").append(t.isTreated())
-                            .append(" sutured=").append(t.isSutured())
-                            .append(" stabilized=").append(t.isStabilized());
+                            .append(" stabilized=").append(t.isStabilized())
+                            .append(" closed=").append(t.isClosed())
+                            .append(" bleedFactor=").append(fmt(t.getBleedFactor()));
                 }
             }
         }

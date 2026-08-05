@@ -22,13 +22,19 @@ import com.warfactory.medical.client.overlay.ActionProgressOverlay;
 import com.warfactory.medical.core.DerivedStats;
 import com.warfactory.medical.core.HealthState;
 import com.warfactory.medical.core.limb.LimbType;
+import com.warfactory.medical.core.trauma.TraumaCategory;
+import com.warfactory.medical.core.trauma.TraumaRegistry;
+import com.warfactory.medical.core.trauma.TraumaResponse;
+import com.warfactory.medical.core.trauma.TraumaType;
 import com.warfactory.medical.core.treatment.TreatmentAction;
 import com.warfactory.medical.item.MedicalItem;
 import com.warfactory.medical.item.ModItems;
 import com.warfactory.medical.network.ClientMedicalCache;
 import com.warfactory.medical.network.MedicalSyncPacket;
 import com.warfactory.medical.network.MedicalSyncPacket.LimbSummary;
+import com.warfactory.medical.network.MedicalSyncPacket.WoundView;
 import com.warfactory.medical.network.TargetSheetInfoPacket;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -168,7 +174,7 @@ public final class MedInteractionScreen {
                 }
             }
         }
-        return new LimbSummary(limb, 1.0F, 0.0F, 0.0F, false);
+        return new LimbSummary(limb, 1.0F, 0.0F, 0.0F, false, List.of());
     }
 
     private static DerivedStats sheetStats() {
@@ -224,7 +230,13 @@ public final class MedInteractionScreen {
             return "none";
         }
         LimbSummary s = sheetLimb(limb);
-        return targetId + "|" + limb + "|" + s.healthPercent() + "|" + s.bleeding() + "|" + s.pain() + "|" + s.fracture();
+        StringBuilder sb = new StringBuilder();
+        sb.append(targetId).append('|').append(limb).append('|')
+                .append(s.healthPercent()).append('|').append(s.pain());
+        for (WoundView w : s.wounds()) {
+            sb.append('|').append(w.typeId()).append(':').append(w.severity()).append(':').append(w.flags());
+        }
+        return sb.toString();
     }
 
     private static void buildWounds(WidgetGroup group) {
@@ -233,22 +245,95 @@ public final class MedInteractionScreen {
             group.addWidget(new LabelWidget(0, 8, Component.translatable("gui.wfmedical.wound.no_limb").getString()));
             return;
         }
-        LimbSummary s = sheetLimb(limb);
+        List<WoundView> wounds = sheetLimb(limb).wounds();
+        if (wounds.isEmpty()) {
+            group.addWidget(new LabelWidget(0, 8, Component.translatable("gui.wfmedical.wound.none").getString()));
+            return;
+        }
         int col = 0;
-        for (Wound wound : Wound.VALUES) {
-            if (!wound.present(s)) {
-                continue;
-            }
+        for (WoundView w : wounds) {
             int x = col * (WOUND_CELL + WOUND_GAP);
             ImageWidget square = new ImageWidget(x, 0, WOUND_CELL, WOUND_CELL,
-                    new ColorRectTexture(wound.color).setRadius(3));
-            square.setHoverTooltips(wound.tooltip(s));
+                    new ColorRectTexture(woundColor(w)).setRadius(3));
+            square.setHoverTooltips(woundTooltip(w));
             group.addWidget(square);
             col++;
         }
-        if (col == 0) {
-            group.addWidget(new LabelWidget(0, 8, Component.translatable("gui.wfmedical.wound.none").getString()));
+    }
+
+    private static TraumaType woundType(WoundView w) {
+        TraumaRegistry reg = TraumaRegistry.active();
+        return reg == null ? null : reg.get(w.typeId());
+    }
+
+    private static int woundColor(WoundView w) {
+        TraumaType type = woundType(w);
+        TraumaCategory cat = type == null ? null : type.getCategory();
+        if (cat == TraumaCategory.FRACTURE) {
+            return 0xFFEDE6D6;
         }
+        if (w.bleeding() || w.bleedControlled()) {
+            return 0xFFE02020;
+        }
+        if (cat == TraumaCategory.BURN || cat == TraumaCategory.CHEMICAL_BURN || cat == TraumaCategory.RADIATION_BURN) {
+            return 0xFFE07020;
+        }
+        if (type != null && !type.isMajor()) {
+            return 0xFFC9A24B;
+        }
+        return 0xFFB83232;
+    }
+
+    private static List<Component> woundTooltip(WoundView w) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.translatable("wound.wfmedical." + w.typeId())
+                .copy()
+                .append(Component.literal("  " + w.severity() + "%"))
+                .withStyle(style -> style.withColor(woundColor(w) & 0xFFFFFF)));
+        lines.add(Component.literal(woundStateText(w)).withStyle(ChatFormatting.GRAY));
+        TraumaType type = woundType(w);
+        if (type != null && !type.getResponses().isEmpty()) {
+            lines.add(Component.translatable("gui.wfmedical.wound.treatments"));
+            for (TraumaResponse r : type.getResponses().values()) {
+                lines.add(Component.literal(" - ")
+                        .append(Component.translatable("gui.wfmedical.action." + r.action().name().toLowerCase(Locale.ROOT)))
+                        .append(Component.literal(": " + effectText(r)))
+                        .withStyle(ChatFormatting.DARK_GRAY));
+            }
+        }
+        return lines;
+    }
+
+    private static String woundStateText(WoundView w) {
+        if (w.closed()) {
+            return "Sutured shut";
+        }
+        if (w.stabilized()) {
+            return "Splinted";
+        }
+        if (w.treated()) {
+            return "Treated - mending";
+        }
+        if (w.bleeding() && w.bleedControlled()) {
+            return "Bleeding (dressed)";
+        }
+        if (w.bleeding()) {
+            return "Bleeding";
+        }
+        if (w.bleedControlled()) {
+            return "Bleed stopped - wound untreated";
+        }
+        return "Untreated";
+    }
+
+    private static String effectText(TraumaResponse r) {
+        return switch (r.effect()) {
+            case STOP_BLEED -> "stops bleeding";
+            case REDUCE_BLEED -> "slows bleeding to " + Math.round(r.factor() * 100.0F) + "%";
+            case SUTURE -> "closes the wound";
+            case STABILIZE -> "stabilizes";
+            case HEAL -> "heals the wound";
+        };
     }
 
 
@@ -458,63 +543,6 @@ public final class MedInteractionScreen {
 
     private static String fmt(float value) {
         return String.format(Locale.ROOT, "%.2f", value);
-    }
-
-
-    private enum Wound {
-        OPEN_WOUND(0xFFB83232, "open_wound",
-                TreatmentAction.HEAL_TRAUMA, TreatmentAction.SUTURE_WOUND),
-        BLEEDING(0xFFE02020, "bleeding",
-                TreatmentAction.REDUCE_BLEEDING, TreatmentAction.SUTURE_WOUND,
-                TreatmentAction.BOOST_CLOTTING, TreatmentAction.APPLY_TOURNIQUET),
-        FRACTURE(0xFFEDE6D6, "fracture",
-                TreatmentAction.STABILIZE_FRACTURE),
-        PAIN(0xFFE0A020, "pain",
-                TreatmentAction.REDUCE_PAIN, TreatmentAction.NUMB_LIMB);
-
-        private static final Wound[] VALUES = values();
-
-        private final int color;
-        private final String key;
-        private final TreatmentAction[] treatments;
-
-        Wound(int color, String key, TreatmentAction... treatments) {
-            this.color = color;
-            this.key = key;
-            this.treatments = treatments;
-        }
-
-        private boolean present(LimbSummary s) {
-            return switch (this) {
-                case OPEN_WOUND -> s.healthPercent() < 0.999F;
-                case BLEEDING -> s.bleeding() > 0.0F;
-                case FRACTURE -> s.fracture();
-                case PAIN -> s.pain() > 0.0F;
-            };
-        }
-
-        private List<Component> tooltip(LimbSummary s) {
-            List<Component> lines = new ArrayList<>();
-            lines.add(Component.translatable("gui.wfmedical.wound." + key)
-                    .append(severity(s))
-                    .withStyle(style -> style.withColor(color & 0xFFFFFF)));
-            lines.add(Component.translatable("gui.wfmedical.wound." + key + ".desc"));
-            lines.add(Component.translatable("gui.wfmedical.wound.treatments"));
-            for (TreatmentAction action : treatments) {
-                lines.add(Component.literal(" - ").append(
-                        Component.translatable("gui.wfmedical.action." + action.name().toLowerCase(Locale.ROOT))));
-            }
-            return lines;
-        }
-
-        private Component severity(LimbSummary s) {
-            return switch (this) {
-                case OPEN_WOUND -> Component.literal("  " + Math.round(s.healthPercent() * 100.0F) + "%");
-                case BLEEDING -> Component.literal("  " + String.format(Locale.ROOT, "%.1f", s.bleeding()) + " ml/s");
-                case PAIN -> Component.literal("  " + Math.round(s.pain() * 100.0F) + "%");
-                case FRACTURE -> Component.empty();
-            };
-        }
     }
 
 

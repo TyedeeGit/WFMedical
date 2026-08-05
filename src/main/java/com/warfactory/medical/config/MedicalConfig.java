@@ -41,6 +41,7 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.DoubleValue MAJOR_TRAUMA_FRACTION_FALL;
     private static final ForgeConfigSpec.BooleanValue FINISH_DOWNED_ON_HIT;
     private static final ForgeConfigSpec.BooleanValue EFFECT_IMMUNE_IN_CREATIVE;
+    private static final ForgeConfigSpec.BooleanValue MANAGE_NATURAL_REGEN;
     private static final ForgeConfigSpec.IntValue MAX_TRAUMA_PER_LIMB;
     private static final ForgeConfigSpec.DoubleValue LEG_FRACTURE_SPEED_MULTIPLIER;
     private static final ForgeConfigSpec.BooleanValue ENABLE_INJECTABLES;
@@ -72,8 +73,11 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.DoubleValue LIMB_BOX_PADDING;
     private static final ForgeConfigSpec.BooleanValue HITBOX_DEBUG;
     private static final ForgeConfigSpec.BooleanValue LOG_HIT_DETECTION;
+    private static final ForgeConfigSpec.BooleanValue LOG_MEDICAL_SYNC;
+    private static final ForgeConfigSpec.IntValue SYNC_FULL_RESYNC_INTERVAL_TICKS;
     private static final ForgeConfigSpec.BooleanValue OPEN_PERSISTENCE_COMPAT;
     private static final ForgeConfigSpec.BooleanValue TACZ_ARM_POSE;
+    private static final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> DAMAGE_SOURCE_CATEGORIES;
     private static final ForgeConfigSpec.EnumValue<HitRegMode> HITREG_MODE;
     private static final ForgeConfigSpec.DoubleValue[] ENV_REACH_H;
     private static final ForgeConfigSpec.DoubleValue[] ENV_REACH_V;
@@ -96,6 +100,7 @@ public final class MedicalConfig {
     private static final ForgeConfigSpec.DoubleValue HEALTH_SHARE_ARM;
     private static final ForgeConfigSpec.DoubleValue HEALTH_SHARE_LEG;
     private static final ForgeConfigSpec.DoubleValue TOURNIQUET_BLEED_MULTIPLIER;
+    private static final ForgeConfigSpec.DoubleValue BLEEDING_RATE_MULTIPLIER;
     private static final ForgeConfigSpec.DoubleValue TOURNIQUET_LEG_SPEED_MULTIPLIER;
     private static final ForgeConfigSpec.DoubleValue TOURNIQUET_ARM_SPEED_MULTIPLIER;
     private static final ForgeConfigSpec.DoubleValue TOURNIQUET_ARM_SWAY;
@@ -231,6 +236,11 @@ public final class MedicalConfig {
                 .comment("Max SHARE of the FULL health bar a fully-destroyed LEG can remove (per leg). A drained leg "
                         + "is disabled; both legs drained forces a crawl. Default 0.18.")
                 .defineInRange("healthShareLeg", 0.18D, 0.0D, 1.0D);
+        BLEEDING_RATE_MULTIPLIER = b
+                .comment("Global multiplier on ALL wound bleeding rates -- i.e. how fast blood (and thus life) "
+                        + "drains from every wound at once. 1.0 = raw per-wound rates; 0.5 = bleed out half as fast. "
+                        + "Default 0.50.")
+                .defineInRange("bleedingRateMultiplier", 0.50D, 0.0D, 10.0D);
         TOURNIQUET_BLEED_MULTIPLIER = b
                 .comment("Multiplier applied to a limb's bleeding while a TOURNIQUET is on it (arms/legs only). "
                         + "Lower = a tourniquet slows blood loss more; it never fully stops it and does NOT treat "
@@ -323,6 +333,13 @@ public final class MedicalConfig {
         ENABLE_GIVE_UP = b.comment("If true, a downed (unconscious / bleeding-out) player may HOLD the 'Give Up' key to die instantly and reach the respawn screen.").define("enableGiveUp", true);
         GIVE_UP_HOLD_TICKS = b.comment("How long (ticks) a downed player must HOLD the 'Give Up' key before dying (20 ticks = 1 second). Default 40 (2 seconds).").defineInRange("giveUpHoldTicks", 40, 1, 1200);
         EFFECT_IMMUNE_IN_CREATIVE = b.comment("Creative-mode players ignore medical penalties.").define("effectImmuneInCreative", true);
+        MANAGE_NATURAL_REGEN = b
+                .comment("If true, WFMedical OWNS the player's health recovery: it drives health up to the medical",
+                        "model's current-health value on its own, and clamps vanilla heals (natural regen, regen",
+                        "potions, ...) so they can't push health past that value. This stops vanilla regen from",
+                        "fighting the medical model, and means you can freely disable vanilla naturalRegeneration",
+                        "WITHOUT stopping medical recovery. Set false to revert to vanilla driving the 'heal up'.")
+                .define("manageNaturalRegen", true);
         ENABLE_INJECTABLES = b.comment("Master toggle for the injectable/opioid substance system (morphine, naloxone, ...).").define("enableInjectables", true);
         ASPHYXIA_ENABLED = b
                 .comment("If true, a heavy opioid overdose can trigger ASPHYXIA (respiratory depression): heavy "
@@ -401,8 +418,9 @@ public final class MedicalConfig {
         DRUG_DECAY_PER_TICK = b
                 .comment("How much injectable drug load decays per tick (higher = shorter dosing window before it "
                         + "clears). Lower values make the drug 'stat' come-down outlast a stimulant's beneficial "
-                        + "effect window. Default 0.00035.")
-                .defineInRange("drugDecayPerTick", 0.00035D, 0.0D, 1.0D);
+                        + "effect window. Come-off time scales with each drug's dose load: default 0.0000277778 "
+                        + "clears a morphine dose (0.5 load) in ~15 min and a combat-stimulant dose (1.4 load) in ~42 min.")
+                .defineInRange("drugDecayPerTick", 0.0000277778D, 0.0D, 1.0D);
         STIMULANT_SPEED_BONUS = b
                 .comment("Movement-speed bonus fraction added at FULL stimulant strength (0.30 = +30% speed). A "
                         + "combat stimulant also overrides injury slowdown and clears the jump penalty while active.")
@@ -516,6 +534,23 @@ public final class MedicalConfig {
                         "warning is logged whenever a shot would land on a rig limb box but TACZ's own collision test",
                         "missed it entirely (so no damage/hurt event ever fired). Off (the default) has ZERO runtime cost.")
                 .define("logHitDetection", false);
+        LOG_MEDICAL_SYNC = b
+                .comment("DEBUG/TEST tool. If true, the whole medical state sync pipeline is traced to the log:",
+                        "server-side every full sync and delta sent (with the per-limb health%/bleed/pain/wound",
+                        "counts and the delta's changed-limb mask), and client-side every full/delta APPLIED to the",
+                        "cache (including a WARN when a delta arrives with no baseline to apply onto -- the classic",
+                        "'UI shows no damage / snaps back to healthy' desync). Use this to pin down sync/cache issues.",
+                        "Off (the default) has ZERO runtime cost.")
+                .define("logMedicalSync", false);
+        SYNC_FULL_RESYNC_INTERVAL_TICKS = b
+                .comment("Safety net for the incremental (delta) medical sync. At most every this many game ticks an",
+                        "active player is re-baselined with a full authoritative sync instead of a delta, so any",
+                        "client-side delta drift (a dropped/late/mis-based delta leaving the character sheet stuck on a",
+                        "stale or falsely-healthy limb) self-corrects within this window. It is invisible while the",
+                        "client is already in sync (the full carries the same data the deltas already produced) and only",
+                        "costs one small extra packet per interval per injured player. Set to 0 to disable and rely on",
+                        "deltas alone. Default 40 (~2s at 20 TPS).")
+                .defineInRange("syncFullResyncIntervalTicks", 40, 0, 12000);
         b.pop();
 
         b.push("compat");
@@ -530,6 +565,21 @@ public final class MedicalConfig {
                         + "baked TACZ third-person hold/ADS pose (driven by the gun's SYNCED aiming progress) instead "
                         + "of the generic raised-forward approximation, so arm hits while aiming a gun land correctly.")
                 .define("taczArmPose", true);
+        DAMAGE_SOURCE_CATEGORIES = b
+                .comment("Tie specific damage sources to a WFMedical hurt category so modded damage makes the right",
+                        "trauma. Each entry is \"<key>=<CATEGORY>\", where <key> is matched against the damage type's",
+                        "registry id first (e.g. gtceu:electric) and then its msgId (e.g. mod.something).",
+                        "Categories: BALLISTIC, SLASHING, BLUNT, UNARMED, PIERCING, FIRE (burns), EXPLOSION,",
+                        "CHEMICAL (chemical burns), RADIATION, FALL, GENERIC. This wins over the built-in guesser.",
+                        "Defaults cover GregTech CEu (verified ids from GTDamageTypes): electrical shock and hot",
+                        "metal/steam are burns; turbine blades cut; chemical and radiation map through.")
+                .defineList("damageSourceCategories", java.util.List.of(
+                        "gtceu:electric=FIRE",
+                        "gtceu:heat=FIRE",
+                        "gtceu:turbine=SLASHING",
+                        "gtceu:chemical=CHEMICAL",
+                        "gtceu:radiation=RADIATION"
+                ), o -> o instanceof String s && s.indexOf('=') > 0);
         b.pop();
 
         b.push("hitregistration");
@@ -751,6 +801,10 @@ public final class MedicalConfig {
         return TOURNIQUET_BLEED_MULTIPLIER.get().floatValue();
     }
 
+    public static double bleedingRateMultiplier() {
+        return BLEEDING_RATE_MULTIPLIER.get();
+    }
+
     public static float tourniquetLegSpeedMultiplier() {
         return TOURNIQUET_LEG_SPEED_MULTIPLIER.get().floatValue();
     }
@@ -905,6 +959,10 @@ public final class MedicalConfig {
         return EFFECT_IMMUNE_IN_CREATIVE.get();
     }
 
+    public static boolean manageNaturalRegen() {
+        return MANAGE_NATURAL_REGEN.get();
+    }
+
     public static int maxTraumaPerLimb() {
         return MAX_TRAUMA_PER_LIMB.get();
     }
@@ -1029,12 +1087,68 @@ public final class MedicalConfig {
         return LOG_HIT_DETECTION.get();
     }
 
+    public static boolean logMedicalSync() {
+        return LOG_MEDICAL_SYNC.get();
+    }
+
+    public static int syncFullResyncIntervalTicks() {
+        return SYNC_FULL_RESYNC_INTERVAL_TICKS.get();
+    }
+
     public static boolean openPersistenceCompat() {
         return OPEN_PERSISTENCE_COMPAT.get();
     }
 
     public static boolean taczArmPose() {
         return TACZ_ARM_POSE.get();
+    }
+
+    private static java.util.List<? extends String> cachedDamageRaw;
+    private static java.util.Map<String, DamageCategory> cachedDamageMap = java.util.Collections.emptyMap();
+
+    /**
+     * Look up a configured hurt category for a damage source key (its registry id or msgId), or null if
+     * no mapping is configured. Backs the data-driven {@code damageSourceCategories} override.
+     */
+    public static DamageCategory damageSourceCategory(String key) {
+        if (key == null || key.isEmpty()) {
+            return null;
+        }
+        return damageSourceCategoryMap().get(key);
+    }
+
+    private static java.util.Map<String, DamageCategory> damageSourceCategoryMap() {
+        java.util.List<? extends String> raw;
+        try {
+            raw = DAMAGE_SOURCE_CATEGORIES.get();
+        } catch (IllegalStateException notLoaded) {
+            return java.util.Collections.emptyMap();
+        }
+        if (raw != cachedDamageRaw) {
+            java.util.Map<String, DamageCategory> parsed = new java.util.HashMap<>();
+            for (String entry : raw) {
+                if (entry == null) {
+                    continue;
+                }
+                int eq = entry.indexOf('=');
+                if (eq <= 0 || eq >= entry.length() - 1) {
+                    continue;
+                }
+                String k = entry.substring(0, eq).trim();
+                String v = entry.substring(eq + 1).trim();
+                if (k.isEmpty() || v.isEmpty()) {
+                    continue;
+                }
+                try {
+                    parsed.put(k, DamageCategory.valueOf(v.toUpperCase(java.util.Locale.ROOT)));
+                } catch (IllegalArgumentException ignoredBadCategory) {
+                    // skip entries with an unknown category name
+                }
+            }
+            cachedDamageMap = parsed;
+            cachedDamageRaw = raw;
+        }
+        return cachedDamageMap;
     }
 
     public static HitRegMode hitRegistrationMode() {
@@ -1147,7 +1261,8 @@ public final class MedicalConfig {
                 tourniquetLegSpeedMultiplier(),
                 tourniquetArmSpeedMultiplier(),
                 headDepletionInstakill(),
-                torsoDepletionInstakill()
+                torsoDepletionInstakill(),
+                bleedingRateMultiplier()
         );
     }
 }

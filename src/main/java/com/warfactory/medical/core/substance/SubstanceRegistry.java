@@ -27,7 +27,7 @@ public final class SubstanceRegistry {
     public static Substance defaultMorphine() {
         return new Substance(
                 "morphine", MORPHINE_ITEM_ID,
-                0.95F,
+                1.0F,
                 0.5F,
                 1.0F,
                 200,

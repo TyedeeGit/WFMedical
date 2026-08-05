@@ -20,6 +20,7 @@ public final class Limb {
     private double cachedBleeding;
     private float cachedPain;
     private float cachedHealthReduction;
+    private float cachedCurrentHealthReduction;
     private float cachedMovementMultiplier = 1.0F;
     private boolean cachedFracture;
     private boolean dirty;
@@ -173,6 +174,7 @@ public final class Limb {
         double bleeding = 0.0D;
         float pain = 0.0F;
         float healthReduction = 0.0F;
+        float currentHealthReduction = 0.0F;
         float movement = 1.0F;
         boolean fracture = false;
         for (int i = 0; i < traumas.size(); i++) {
@@ -180,6 +182,7 @@ public final class Limb {
             bleeding += t.bleeding();
             pain += t.pain();
             healthReduction += t.healthReduction();
+            currentHealthReduction += t.currentHealthReduction();
             if (type.isLeg()) {
                 movement *= t.getType().getMovementModifier();
             }
@@ -190,6 +193,7 @@ public final class Limb {
         this.cachedBleeding = bleeding;
         this.cachedPain = pain;
         this.cachedHealthReduction = healthReduction;
+        this.cachedCurrentHealthReduction = currentHealthReduction;
         this.cachedMovementMultiplier = movement;
         this.cachedFracture = fracture;
         this.dirty = false;
@@ -205,6 +209,10 @@ public final class Limb {
 
     public float getCachedHealthReduction() {
         return cachedHealthReduction;
+    }
+
+    public float getCachedCurrentHealthReduction() {
+        return cachedCurrentHealthReduction;
     }
 
     public float getCachedMovementMultiplier() {

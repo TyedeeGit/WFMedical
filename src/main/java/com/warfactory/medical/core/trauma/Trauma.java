@@ -9,9 +9,11 @@ public final class Trauma {
     private final LimbType limb;
     private float severity;
     private float baseSeverity;
+    /** Multiplier on this wound's bleeding (1 = full, 0 = stopped). Set by bleed-control treatments. */
+    private float bleedFactor = 1.0F;
     private boolean treated;
-    private boolean sutured;
     private boolean stabilized;
+    private boolean closed;
     private long timestamp;
     private float healProgress;
 
@@ -32,9 +34,21 @@ public final class Trauma {
         LimbType limb = LimbType.byOrdinal(tag.getInt("Limb"));
         Trauma t = new Trauma(type, limb, tag.getFloat("Severity"), tag.getLong("Timestamp"));
         t.baseSeverity = tag.contains("BaseSeverity") ? t.clampSeverity(tag.getFloat("BaseSeverity")) : t.severity;
-        t.treated = tag.getBoolean("Treated");
-        t.sutured = tag.getBoolean("Sutured");
-        t.stabilized = tag.getBoolean("Stabilized");
+        if (tag.contains("BleedFactor")) {
+            t.bleedFactor = clampFactor(tag.getFloat("BleedFactor"));
+            t.treated = tag.getBoolean("Treated");
+            t.stabilized = tag.getBoolean("Stabilized");
+            t.closed = tag.getBoolean("Closed");
+        } else {
+            // Migrate the old treated/sutured/stabilized/bleedStopped flags to the new bleedFactor model.
+            boolean oldTreated = tag.getBoolean("Treated");
+            boolean oldSutured = tag.getBoolean("Sutured");
+            boolean oldBleedStopped = tag.getBoolean("BleedStopped");
+            t.stabilized = tag.getBoolean("Stabilized");
+            t.closed = oldSutured;
+            t.treated = oldTreated || oldSutured;
+            t.bleedFactor = (oldSutured || oldBleedStopped) ? 0.0F : (oldTreated ? 0.25F : 1.0F);
+        }
         t.healProgress = tag.getFloat("HealProgress");
         return t;
     }
@@ -45,6 +59,13 @@ public final class Trauma {
         }
         float max = type.getMaxSeverity();
         return s > max ? max : s;
+    }
+
+    private static float clampFactor(float f) {
+        if (f < 0.0F) {
+            return 0.0F;
+        }
+        return f > 1.0F ? 1.0F : f;
     }
 
     public TraumaType getType() {
@@ -63,6 +84,7 @@ public final class Trauma {
         this.severity = clampSeverity(severity);
     }
 
+    /** Whether the wound is being properly cared for and will mend on its own (self-repair branch). */
     public boolean isTreated() {
         return treated;
     }
@@ -71,20 +93,34 @@ public final class Trauma {
         this.treated = treated;
     }
 
-    public boolean isSutured() {
-        return sutured;
-    }
-
-    public void setSutured(boolean sutured) {
-        this.sutured = sutured;
-    }
-
     public boolean isStabilized() {
         return stabilized;
     }
 
     public void setStabilized(boolean stabilized) {
         this.stabilized = stabilized;
+    }
+
+    /** Whether the wound has been closed (sutured) so it will not reopen. Implies bleeding stopped. */
+    public boolean isClosed() {
+        return closed;
+    }
+
+    public void setClosed(boolean closed) {
+        this.closed = closed;
+    }
+
+    /** Current bleed multiplier (1 = full bleed, 0 = fully controlled). */
+    public float getBleedFactor() {
+        return bleedFactor;
+    }
+
+    public void setBleedFactor(float bleedFactor) {
+        this.bleedFactor = clampFactor(bleedFactor);
+    }
+
+    public boolean isBleedControlledOnly() {
+        return bleedFactor < 1.0F && !treated;
     }
 
     public long getTimestamp() {
@@ -100,12 +136,11 @@ public final class Trauma {
     }
 
     public float bleeding() {
-        if (sutured) {
+        if (bleedFactor <= 0.0F) {
             return 0.0F;
         }
         float bleedSeverity = Math.min(severity, baseSeverity);
-        float base = type.getBleedingPerSeverity() * bleedSeverity;
-        return treated ? base * 0.25F : base;
+        return type.getBleedingPerSeverity() * bleedSeverity * bleedFactor;
     }
 
     public float pain() {
@@ -115,6 +150,15 @@ public final class Trauma {
 
     public float healthReduction() {
         return type.isMajor() ? type.getHealthReductionPerSeverity() * severity : 0.0F;
+    }
+
+    /**
+     * Recoverable current-health loss from a minor injury (e.g. a fall's blunt trauma). Unlike
+     * {@link #healthReduction()} (which lowers max health until a major wound is treated), this only
+     * lowers current health and comes back on its own as the minor trauma self-heals.
+     */
+    public float currentHealthReduction() {
+        return type.isMajor() ? 0.0F : type.getHealthReductionPerSeverity() * severity;
     }
 
     public boolean isMinor() {
@@ -131,17 +175,19 @@ public final class Trauma {
                 && type.isMergeable()
                 && other.type == this.type
                 && other.limb == this.limb
-                && !this.sutured
-                && !other.sutured
+                && !this.closed
+                && !other.closed
                 && this.severity < type.getMaxSeverity();
     }
 
     public void mergeIn(Trauma other) {
         this.severity = clampSeverity(this.severity + other.severity);
         this.baseSeverity = clampSeverity(this.baseSeverity + other.baseSeverity);
+        // Merging fresh damage in re-opens bleed control to the less-controlled of the two.
+        this.bleedFactor = Math.max(this.bleedFactor, other.bleedFactor);
         this.treated = this.treated && other.treated;
-        this.sutured = this.sutured && other.sutured;
         this.stabilized = this.stabilized && other.stabilized;
+        this.closed = this.closed && other.closed;
         this.timestamp = Math.min(this.timestamp, other.timestamp);
         this.healProgress = Math.min(this.healProgress, other.healProgress);
     }
@@ -152,9 +198,10 @@ public final class Trauma {
         tag.putInt("Limb", limb.ordinal());
         tag.putFloat("Severity", severity);
         tag.putFloat("BaseSeverity", baseSeverity);
+        tag.putFloat("BleedFactor", bleedFactor);
         tag.putBoolean("Treated", treated);
-        tag.putBoolean("Sutured", sutured);
         tag.putBoolean("Stabilized", stabilized);
+        tag.putBoolean("Closed", closed);
         tag.putLong("Timestamp", timestamp);
         tag.putFloat("HealProgress", healProgress);
         return tag;

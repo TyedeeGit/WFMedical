@@ -38,6 +38,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
+import net.minecraftforge.event.entity.living.LivingHealEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -207,6 +208,37 @@ public final class MedicalEventHandler {
             event.setAmount(Math.min(amount * BLOCKED_RESIDUAL_FRACTION, BLOCKED_RESIDUAL_MAX));
         } else {
             event.setAmount(0.0F);
+        }
+    }
+
+    /**
+     * Consolidates health recovery: when WFMedical manages regen it is the sole authority on a player's
+     * current health (the tick drives it UP to the medical value, see {@link MedicalEngine}). Here we clamp
+     * any vanilla heal (natural regen, regen potions, ...) so it can never push health past that medical
+     * value -- otherwise vanilla natural regen fights the medical clamp every tick, and disabling vanilla
+     * regen would also stop medical recovery.
+     */
+    @SubscribeEvent
+    public static void onLivingHeal(LivingHealEvent event) {
+        if (!MedicalConfig.manageNaturalRegen()) {
+            return;
+        }
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        if ((player.isCreative() || player.isSpectator()) && MedicalConfig.effectImmuneInCreative()) {
+            return;
+        }
+        IMedicalData data = MedicalCapabilities.get(player);
+        if (data == null) {
+            return;
+        }
+        float cap = data.getProfile().cached().effectiveCurrentHealth();
+        float headroom = cap - player.getHealth();
+        if (headroom <= 0.0F) {
+            event.setCanceled(true);
+        } else if (event.getAmount() > headroom) {
+            event.setAmount(headroom);
         }
     }
 

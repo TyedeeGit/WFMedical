@@ -1,8 +1,13 @@
 package com.warfactory.medical.core.damage;
 
 import com.warfactory.medical.compat.TaczCompat;
+import com.warfactory.medical.config.MedicalConfig;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.LivingEntity;
 
@@ -16,6 +21,12 @@ public final class DamageClassifier {
     public static DamageCategory classify(DamageSource source) {
         if (source == null) {
             return DamageCategory.GENERIC;
+        }
+
+        // Data-driven overrides (config: damageSourceCategories) win over the built-in guesser. //TODO: Ensure it works fine with gt shock and steam
+        DamageCategory configured = configuredCategory(source);
+        if (configured != null) {
+            return configured;
         }
 
         if (TaczCompat.isGunDamage(source)) {
@@ -71,11 +82,34 @@ public final class DamageClassifier {
         return DamageCategory.GENERIC;
     }
 
+    private static DamageCategory configuredCategory(DamageSource source) {
+        ResourceLocation id = damageTypeId(source);
+        if (id != null) {
+            DamageCategory byId = MedicalConfig.damageSourceCategory(id.toString());
+            if (byId != null) {
+                return byId;
+            }
+        }
+        String msg = source.getMsgId();
+        if (msg != null) {
+            return MedicalConfig.damageSourceCategory(msg);
+        }
+        return null;
+    }
+
+    private static ResourceLocation damageTypeId(DamageSource source) {
+        try {
+            return source.typeHolder().unwrapKey().map(ResourceKey::location).orElse(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private static boolean isUnarmed(DamageSource source) {
         return source.getEntity() instanceof LivingEntity attacker && attacker.getMainHandItem().isEmpty();
     }
 
-    private static boolean is(DamageSource source, net.minecraft.tags.TagKey<net.minecraft.world.damagesource.DamageType> tag) {
+    private static boolean is(DamageSource source, TagKey<DamageType> tag) {
         if (source == null || tag == null) {
             return false;
         }
@@ -86,7 +120,7 @@ public final class DamageClassifier {
         }
     }
 
-    private static boolean is(DamageSource source, net.minecraft.resources.ResourceKey<net.minecraft.world.damagesource.DamageType> key) {
+    private static boolean is(DamageSource source, ResourceKey<DamageType> key) {
         if (source == null || key == null) {
             return false;
         }

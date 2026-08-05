@@ -1,17 +1,26 @@
 package com.warfactory.medical.item;
 
 import com.warfactory.medical.client.render.MedicalItemRenderer;
+import com.warfactory.medical.core.trauma.TraumaCategory;
 import com.warfactory.medical.core.treatment.Treatment;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.UseAnim;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.client.extensions.common.IClientItemExtensions;
 
+import javax.annotation.Nullable;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.function.Consumer;
 
 public class MedicalItem extends Item {
@@ -46,6 +55,47 @@ public class MedicalItem extends Item {
     @Override
     public UseAnim getUseAnimation(ItemStack stack) {
         return useAnim;
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
+        if (treatment != null) {
+            String key = "tooltip.wfmedical." + treatment.action().name().toLowerCase(Locale.ROOT);
+            tooltip.add(Component.translatable(key + ".effect").withStyle(ChatFormatting.GRAY));
+            Set<TraumaCategory> cats = treatment.applicableCategories();
+            if (!cats.isEmpty()) {
+                tooltip.add(Component.translatable("tooltip.wfmedical.treats", categoriesText(cats))
+                        .withStyle(ChatFormatting.DARK_GREEN));
+            }
+            if (treatment.bloodRestoreMl() > 0.0D) {
+                tooltip.add(Component.translatable("tooltip.wfmedical.blood_restore",
+                        (int) Math.round(treatment.bloodRestoreMl())).withStyle(ChatFormatting.DARK_RED));
+            }
+            tooltip.add(Component.translatable(key + ".limit").withStyle(ChatFormatting.DARK_GRAY));
+            tooltip.add(Component.translatable("tooltip.wfmedical.apply_time",
+                    formatSeconds(treatment.useDurationTicks())).withStyle(ChatFormatting.DARK_GRAY));
+        }
+        super.appendHoverText(stack, level, tooltip, flag);
+    }
+
+    private static Component categoriesText(Set<TraumaCategory> cats) {
+        MutableComponent out = Component.empty();
+        boolean first = true;
+        for (TraumaCategory c : cats) {
+            if (!first) {
+                out.append(", ");
+            }
+            out.append(Component.translatable("tooltip.wfmedical.category." + c.name().toLowerCase(Locale.ROOT)));
+            first = false;
+        }
+        return out;
+    }
+
+    static String formatSeconds(int ticks) {
+        double seconds = ticks / 20.0;
+        return seconds == Math.floor(seconds)
+                ? Integer.toString((int) seconds)
+                : String.format(Locale.ROOT, "%.1f", seconds);
     }
 
     @Override

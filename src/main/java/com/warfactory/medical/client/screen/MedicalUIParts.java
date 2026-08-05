@@ -151,7 +151,7 @@ public final class MedicalUIParts {
                 }
             }
         }
-        return new LimbSummary(limb, 1.0F, 0.0F, 0.0F, false);
+        return new LimbSummary(limb, 1.0F, 0.0F, 0.0F, false, java.util.List.of());
     }
 
 

@@ -73,7 +73,8 @@ public record PhysiologyParams(
         float tourniquetLegSpeedMultiplier,
         float tourniquetArmSpeedMultiplier,
         boolean headDepletionInstakill,
-        boolean torsoDepletionInstakill
+        boolean torsoDepletionInstakill,
+        double bleedingRateMultiplier
 ) {
     public static PhysiologyParams defaults() {
         return new PhysiologyParams(
@@ -109,7 +110,8 @@ public record PhysiologyParams(
                 0.85F,      // tourniquetLegSpeedMultiplier
                 0.95F,      // tourniquetArmSpeedMultiplier
                 false,      // headDepletionInstakill
-                false       // torsoDepletionInstakill
+                false,      // torsoDepletionInstakill
+                0.50D       // bleedingRateMultiplier
         );
     }
 

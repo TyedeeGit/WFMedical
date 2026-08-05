@@ -11,6 +11,7 @@ public final class Physiology {
     public static DerivedStats compute(MedicalProfile p, PhysiologyParams cfg) {
         double bleeding = 0.0D;
         float limbHealthReduction = 0.0F;
+        float currentHealthDeficit = 0.0F;
         float movementFromLimbs = 1.0F;
         boolean legFracture = false;
         boolean armFracture = false;
@@ -31,6 +32,7 @@ public final class Physiology {
             float cap = cfg.healthShare(lt) * maxHp;
             float reduction = limb.getCachedHealthReduction();
             limbHealthReduction += cap > 0.0F ? Math.min(reduction, cap) : reduction;
+            currentHealthDeficit += limb.getCachedCurrentHealthReduction();
             boolean drained = cap > 0.0F && reduction >= cap;
             movementFromLimbs *= limb.getCachedMovementMultiplier();
             if (limb.hasCachedFracture()) {
@@ -137,7 +139,12 @@ public final class Physiology {
         if (effectiveMaxHealth < 0.0F) {
             effectiveMaxHealth = 0.0F;
         }
-        float effectiveCurrentHealth = effectiveMaxHealth;
+        // Minor injuries (bruises, a fall's blunt trauma) sap current health without lowering the max;
+        // it recovers on its own as those traumas self-heal.
+        float effectiveCurrentHealth = effectiveMaxHealth - currentHealthDeficit;
+        if (effectiveCurrentHealth < 0.0F) {
+            effectiveCurrentHealth = 0.0F;
+        }
 
         float bloodScore = 0.0F;
         if (cfg.bloodUnconsciousLossFraction() > 0.0D) {
@@ -256,7 +263,7 @@ public final class Physiology {
                 effectiveMaxHealth,
                 healthModifier,
                 effectiveCurrentHealth,
-                bleeding,
+                bleeding * cfg.bleedingRateMultiplier(),
                 totalPain,
                 systemicPain,
                 movement,

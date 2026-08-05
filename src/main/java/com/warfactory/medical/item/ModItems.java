@@ -23,7 +23,8 @@ public final class ModItems {
             DeferredRegister.create(ForgeRegistries.ITEMS, WFMedical.MOD_ID);
     public static final RegistryObject<Item> BANDAGE = medical("bandage",
             new Treatment(TreatmentAction.REDUCE_BLEEDING,
-                    cats(TraumaCategory.LACERATION, TraumaCategory.PUNCTURE), 0.5F, 0.0D, 40, false));
+                    cats(TraumaCategory.LACERATION, TraumaCategory.PUNCTURE, TraumaCategory.CRUSH_INJURY),
+                    0.5F, 0.0D, 40, false));
     public static final RegistryObject<Item> SPLINT = medical("splint",
             new Treatment(TreatmentAction.STABILIZE_FRACTURE,
                     cats(TraumaCategory.FRACTURE), 1.0F, 0.0D, 60, false));

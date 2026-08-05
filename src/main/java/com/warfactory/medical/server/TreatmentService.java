@@ -7,6 +7,7 @@ import com.warfactory.medical.core.MedicalProfile;
 import com.warfactory.medical.core.limb.Limb;
 import com.warfactory.medical.core.limb.LimbType;
 import com.warfactory.medical.core.trauma.Trauma;
+import com.warfactory.medical.core.trauma.TraumaResponse;
 import com.warfactory.medical.core.treatment.Treatment;
 import com.warfactory.medical.core.treatment.TreatmentAction;
 import net.minecraft.server.level.ServerPlayer;
@@ -80,6 +81,10 @@ public final class TreatmentService {
             return true;
         }
 
+        // BOOST_CLOTTING is a global timed buff, but it ALSO applies a targeted wound response (this is how a
+        // hemostatic can slow internal bleeding). Apply the global buff here, then fall through so a wound that
+        // declares a BOOST_CLOTTING response gets treated too.
+        boolean clottingChanged = false;
         if (action == TreatmentAction.BOOST_CLOTTING) {
             float mag = treatment.magnitude() > 0.0F ? treatment.magnitude() : DEFAULT_HEAL_MAGNITUDE;
             long end = gameTime + MedicalConfig.clottingAgentDurationTicks();
@@ -87,25 +92,25 @@ public final class TreatmentService {
             long beforeEnd = profile.getClottingBoostEndTick();
             float newBoost = Math.max(beforeBoost, mag);
             long newEnd = Math.max(beforeEnd, end);
-            if (newBoost == beforeBoost && newEnd == beforeEnd) {
-                return false;
+            if (newBoost != beforeBoost || newEnd != beforeEnd) {
+                profile.setClottingBoost(newBoost);
+                profile.setClottingBoostEndTick(newEnd);
+                profile.markDirty();
+                clottingChanged = true;
             }
-            profile.setClottingBoost(newBoost);
-            profile.setClottingBoostEndTick(newEnd);
-            profile.markDirty();
-            data.bumpRevision();
-            return true;
         }
 
         Trauma target = pickTarget(profile, treatment, action, limbHint);
         if (target == null) {
+            boolean bloodChanged = false;
             if (treatment.bloodRestoreMl() > 0.0D && profile.getBloodMl() < profile.getMaxBloodMl()) {
                 double before = profile.getBloodMl();
                 profile.setBloodMl(before + treatment.bloodRestoreMl());
-                if (profile.getBloodMl() != before) {
-                    data.bumpRevision();
-                    return true;
-                }
+                bloodChanged = profile.getBloodMl() != before;
+            }
+            if (clottingChanged || bloodChanged) {
+                data.bumpRevision();
+                return true;
             }
             return false;
         }
@@ -114,37 +119,53 @@ public final class TreatmentService {
         boolean removed = false;
         boolean changed = false;
 
-        switch (action) {
-            case REDUCE_BLEEDING -> {
-                if (!target.isTreated()) {
-                    target.setTreated(true);
+        // Apply the trauma's data-driven response for this action (fully modular per trauma type).
+        TraumaResponse resp = target.getType().response(action);
+        if (resp == null) {
+            return false;
+        }
+        switch (resp.effect()) {
+            case STOP_BLEED -> {
+                if (target.getBleedFactor() > 0.0F) {
+                    target.setBleedFactor(0.0F);
                     changed = true;
                 }
             }
-            case SUTURE_WOUND -> {
-                if (!target.isSutured()) {
-                    target.setSutured(true);
-                    target.setTreated(true);
+            case REDUCE_BLEED -> {
+                float f = resp.factor();
+                if (target.getBleedFactor() > f) {
+                    target.setBleedFactor(f);
                     changed = true;
                 }
             }
-            case STABILIZE_FRACTURE -> {
+            case SUTURE -> {
+                if (target.getBleedFactor() > 0.0F) {
+                    target.setBleedFactor(0.0F);
+                    changed = true;
+                }
+                if (!target.isClosed()) {
+                    target.setClosed(true);
+                    changed = true;
+                }
+            }
+            case STABILIZE -> {
                 if (!target.isStabilized()) {
                     target.setStabilized(true);
                     changed = true;
                 }
             }
-            case HEAL_TRAUMA, TREAT_BURN, TREAT_RADIATION -> {
+            case HEAL -> {
                 target.setSeverity(target.getSeverity() - magnitude);
-                target.setTreated(true);
                 changed = true;
                 if (treatment.removesTrauma() || target.getSeverity() <= 0.0F) {
                     removed = true;
                 }
             }
-            default -> {
-                return false;
-            }
+        }
+        // Effects that "care for" the wound (suture / heal) also mark it treated so it mends on its own.
+        if (resp.heals() && !target.isTreated()) {
+            target.setTreated(true);
+            changed = true;
         }
 
         if (treatment.removesTrauma() && !removed && changed) {
@@ -163,6 +184,10 @@ public final class TreatmentService {
         }
 
         if (!changed) {
+            if (clottingChanged) {
+                data.bumpRevision();
+                return true;
+            }
             return false;
         }
 
@@ -217,6 +242,10 @@ public final class TreatmentService {
         }
         for (Trauma t : limb.getTraumas()) {
             if (treatment.appliesTo(t.getType().getCategory()) && t.getType().respondsTo(action)) {
+                // A dressing is only useful while the wound is actually bleeding.
+                if (action == TreatmentAction.REDUCE_BLEEDING && t.bleeding() <= 0.0F) {
+                    continue;
+                }
                 return true;
             }
         }
@@ -235,9 +264,9 @@ public final class TreatmentService {
 
     private static float priority(TreatmentAction action, Trauma t) {
         return switch (action) {
-            case REDUCE_BLEEDING, SUTURE_WOUND -> {
+            case REDUCE_BLEEDING, SUTURE_WOUND, BOOST_CLOTTING -> {
                 float bonus = t.bleeding() > 0.0F ? 2.0F : 0.0F;
-                if (t.isTreated() || t.isSutured()) {
+                if (t.isTreated() || t.getBleedFactor() < 1.0F) {
                     bonus -= 1.0F;
                 }
                 yield bonus;

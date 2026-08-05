@@ -25,6 +25,8 @@ public final class MedicalNetworking {
             PROTOCOL::equals,
             PROTOCOL::equals);
     private static final Map<ServerPlayer, MedicalSyncPacket> LAST_SENT = new WeakHashMap<>();
+    // Last game tick each player was re-baselined with a full authoritative sync (safety net; see syncTo).
+    private static final Map<ServerPlayer, Long> LAST_FULL_TICK = new WeakHashMap<>();
     private static boolean registered;
 
     private MedicalNetworking() {
@@ -202,6 +204,10 @@ public final class MedicalNetworking {
         MedicalSyncPacket full = MedicalSyncPacket.fromProfile(profile);
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), full);
         LAST_SENT.put(player, full);
+        LAST_FULL_TICK.put(player, player.level().getGameTime());
+        if (MedicalConfig.logMedicalSync()) {
+            WFMedical.LOGGER.info("[wfmed-sync] FULL  -> {} {}", player.getGameProfile().getName(), summarize(full));
+        }
     }
 
     public static void syncTo(ServerPlayer player, MedicalProfile profile) {
@@ -210,6 +216,21 @@ public final class MedicalNetworking {
             sendFull(player, profile);
             return;
         }
+
+        // Safety net: periodically re-baseline with a full authoritative sync so any client-side delta drift
+        // (a dropped / late / mis-based delta that left the cache stuck on a stale or falsely-healthy limb)
+        // self-corrects within the interval. Invisible while in sync -- the full carries the same data the
+        // deltas already produced -- so this only ever visibly does anything when a desync actually happened.
+        int fullInterval = MedicalConfig.syncFullResyncIntervalTicks();
+        if (fullInterval > 0) {
+            long now = player.level().getGameTime();
+            Long lastFull = LAST_FULL_TICK.get(player);
+            if (lastFull == null || now - lastFull >= fullInterval) {
+                sendFull(player, profile);
+                return;
+            }
+        }
+
         MedicalSyncPacket full = MedicalSyncPacket.fromProfile(profile);
         MedicalDeltaPacket delta = MedicalDeltaPacket.diff(prev, full);
         if (delta.isEmpty()) {
@@ -217,6 +238,42 @@ public final class MedicalNetworking {
         }
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), delta);
         LAST_SENT.put(player, full);
+        if (MedicalConfig.logMedicalSync()) {
+            WFMedical.LOGGER.info("[wfmed-sync] DELTA -> {} mask={} {}", player.getGameProfile().getName(),
+                    Integer.toBinaryString(delta.mask()), summarize(full));
+        }
+    }
+
+    /** Compact per-limb health%/bleed/pain/wound-count line for sync tracing (see logMedicalSync). */
+    private static String summarize(MedicalSyncPacket packet) {
+        StringBuilder sb = new StringBuilder(96);
+        sb.append("state=").append(packet.state()).append(" blood=").append(Math.round(packet.bloodMl()))
+                .append(" limbs[");
+        MedicalSyncPacket.LimbSummary[] limbs = packet.limbs();
+        for (int i = 0; i < limbs.length; i++) {
+            MedicalSyncPacket.LimbSummary s = limbs[i];
+            if (s == null) {
+                continue;
+            }
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(s.limb()).append('=').append(Math.round(s.healthPercent() * 100.0F)).append('%');
+            if (s.bleeding() > 0.0F) {
+                sb.append(",bleed").append(String.format(java.util.Locale.ROOT, "%.2f", s.bleeding()));
+            }
+            if (s.pain() > 0.0F) {
+                sb.append(",pain").append(String.format(java.util.Locale.ROOT, "%.2f", s.pain()));
+            }
+            if (s.fracture()) {
+                sb.append(",fx");
+            }
+            int w = s.wounds() == null ? 0 : s.wounds().size();
+            if (w > 0) {
+                sb.append(",w").append(w);
+            }
+        }
+        return sb.append(']').toString();
     }
 
     public static void sendActiveTreatment(ServerPlayer player, ActiveTreatmentPacket packet) {

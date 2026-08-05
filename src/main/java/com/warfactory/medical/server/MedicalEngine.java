@@ -26,8 +26,10 @@ public final class MedicalEngine {
 
     private static final float DEFAULT_MINOR_REGEN_PER_TICK = 0.0006F;
     private static final float MAJOR_WORSEN_PER_TICK = 0.00015F;
-    private static final float PAIN_SUPPRESSION_DECAY_PER_TICK = 0.0008F;
-    private static final float LOCAL_NUMB_DECAY_PER_TICK = 0.0005F;
+    // Systemic pain suppression wears off linearly: morphine (1.0) over 10 min, painkillers (0.5) over 5 min (20 ticks/s).
+    private static final float PAIN_SUPPRESSION_DECAY_PER_TICK = 1.0F / (10 * 60 * 20);
+    // Local anesthetic (0.9) limb numbing wears off over ~8 min.
+    private static final float LOCAL_NUMB_DECAY_PER_TICK = 0.9F / (8 * 60 * 20);
 
     private static int tickCounter;
 
@@ -127,7 +129,9 @@ public final class MedicalEngine {
         }
 
         if (wasDirty) {
-            MedicalEffects.apply(player, stats);
+            // When WFMedical owns regen it drives health UP to the medical value too (not just down), so it
+            // no longer relies on vanilla natural regen for recovery. See MedicalEventHandler#onLivingHeal.
+            MedicalEffects.apply(player, stats, MedicalConfig.manageNaturalRegen());
         }
 
         int armWeakness = MedicalConfig.brokenArmMeleeWeaknessLevel();
@@ -458,7 +462,7 @@ public final class MedicalEngine {
                     }
                     changed = true;
                 } else {
-                    boolean handled = t.isTreated() || t.isSutured() || t.isStabilized();
+                    boolean handled = t.isTreated() || t.isStabilized();
                     if (handled) {
                         if (typeHeal > 0.0F) {
                             t.setSeverity(t.getSeverity() - typeHeal);
@@ -467,6 +471,11 @@ public final class MedicalEngine {
                             }
                             changed = true;
                         }
+                    } else if (t.isBleedControlledOnly()) {
+                        // Bleeding is dressed but the wound itself is untreated (e.g. a crush): it is
+                        // frozen -- no self-clot, no worsening, no regeneration -- and keeps contributing
+                        // pain and health reduction until a suture or medkit actually treats it.
+                        continue;
                     } else {
                         boolean bleeds = t.getType().getBleedingPerSeverity() > 0.0F;
                         double fractureMinutes = MedicalConfig.fractureSelfHealMinutes();

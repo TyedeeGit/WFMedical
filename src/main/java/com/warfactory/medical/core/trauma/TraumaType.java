@@ -3,8 +3,8 @@ package com.warfactory.medical.core.trauma;
 import com.warfactory.medical.core.treatment.TreatmentAction;
 
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.EnumMap;
+import java.util.Map;
 
 public final class TraumaType {
 
@@ -21,7 +21,7 @@ public final class TraumaType {
     private final float healthReductionPerSeverity;
     private final float maxSeverity;
     private final boolean mergeable;
-    private final Set<String> treatmentActions;
+    private final Map<TreatmentAction, TraumaResponse> responses;
 
     private TraumaType(Builder b) {
         this.id = b.id;
@@ -37,9 +37,9 @@ public final class TraumaType {
         this.healthReductionPerSeverity = b.healthReductionPerSeverity;
         this.maxSeverity = b.maxSeverity;
         this.mergeable = b.mergeable;
-        this.treatmentActions = b.treatmentActions.isEmpty()
-                ? Collections.emptySet()
-                : Collections.unmodifiableSet(new HashSet<>(b.treatmentActions));
+        this.responses = b.responses.isEmpty()
+                ? Collections.emptyMap()
+                : Collections.unmodifiableMap(new EnumMap<>(b.responses));
     }
 
     public static Builder builder(String id, TraumaCategory category) {
@@ -98,18 +98,23 @@ public final class TraumaType {
         return mergeable;
     }
 
-    public Set<String> getTreatmentActions() {
-        return treatmentActions;
+    public Map<TreatmentAction, TraumaResponse> getResponses() {
+        return responses;
     }
 
     public boolean respondsTo(TreatmentAction action) {
-        return action != null && treatmentActions.contains(action.name());
+        return action != null && responses.containsKey(action);
+    }
+
+    /** The declared outcome of applying {@code action} to this trauma, or null if it does not apply. */
+    public TraumaResponse response(TreatmentAction action) {
+        return action == null ? null : responses.get(action);
     }
 
     public static final class Builder {
         private final String id;
         private final TraumaCategory category;
-        private final Set<String> treatmentActions = new HashSet<>();
+        private final Map<TreatmentAction, TraumaResponse> responses = new EnumMap<>(TreatmentAction.class);
         private boolean major;
         private float severityContribution = 1.0F;
         private float painPerSeverity;
@@ -183,14 +188,26 @@ public final class TraumaType {
             return this;
         }
 
+        /** Register the default response for an action (bare {@code ACTION} entry). */
         public Builder treatment(TreatmentAction action) {
-            this.treatmentActions.add(action.name());
+            TraumaResponse resp = TraumaResponse.defaultFor(action);
+            if (resp != null) {
+                this.responses.put(action, resp);
+            }
             return this;
         }
 
         public Builder treatments(TreatmentAction... actions) {
             for (TreatmentAction a : actions) {
-                this.treatmentActions.add(a.name());
+                treatment(a);
+            }
+            return this;
+        }
+
+        /** Register an explicit per-action response (overrides any default for that action). */
+        public Builder response(TraumaResponse resp) {
+            if (resp != null && resp.action() != null) {
+                this.responses.put(resp.action(), resp);
             }
             return this;
         }

@@ -8,6 +8,7 @@ import com.warfactory.medical.core.substance.Substance;
 import com.warfactory.medical.core.substance.SubstanceRegistry;
 import com.warfactory.medical.core.trauma.TraumaCategory;
 import com.warfactory.medical.core.trauma.TraumaRegistry;
+import com.warfactory.medical.core.trauma.TraumaResponse;
 import com.warfactory.medical.core.trauma.TraumaType;
 import com.warfactory.medical.core.treatment.Treatment;
 import com.warfactory.medical.core.treatment.TreatmentAction;
@@ -128,13 +129,68 @@ public final class MedicalDefinitions {
                 .maxSeverity(flt(t, "maxSeverity", 1.0F))
                 .mergeable(bool(t, "mergeable", true));
 
-        for (String actionName : strList(t, "treatmentActions")) {
-            TreatmentAction action = parseAction(actionName);
-            if (action != null) {
-                b.treatment(action);
+        for (String entry : strList(t, "treatmentActions")) {
+            TraumaResponse resp = parseResponse(entry);
+            if (resp != null) {
+                b.response(resp);
             }
         }
         return b.build();
+    }
+
+    /** Parse a {@code treatmentActions} entry of the form {@code ACTION[=EFFECT[:factor]]}. */
+    private static TraumaResponse parseResponse(String entry) {
+        if (entry == null) {
+            return null;
+        }
+        String s = entry.trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        int eq = s.indexOf('=');
+        TreatmentAction action = parseAction(eq < 0 ? s : s.substring(0, eq));
+        if (action == null) {
+            return null;
+        }
+        if (eq < 0) {
+            return TraumaResponse.defaultFor(action);
+        }
+        String spec = s.substring(eq + 1).trim();
+        int colon = spec.indexOf(':');
+        String effectName = colon < 0 ? spec : spec.substring(0, colon);
+        String param = colon < 0 ? null : spec.substring(colon + 1).trim();
+        TraumaResponse.Effect effect = parseEffect(effectName);
+        if (effect == null) {
+            LOGGER.warn("[wfmedical] Unknown treatment effect '{}' in '{}' - using default", effectName, entry);
+            return TraumaResponse.defaultFor(action);
+        }
+        float factor = 0.0F;
+        if (effect == TraumaResponse.Effect.REDUCE_BLEED) {
+            TraumaResponse def = TraumaResponse.defaultFor(action);
+            factor = def != null && def.effect() == TraumaResponse.Effect.REDUCE_BLEED ? def.factor() : 0.25F;
+        }
+        if (param != null && !param.isEmpty()) {
+            try {
+                factor = Float.parseFloat(param);
+            } catch (NumberFormatException ignored) {
+                LOGGER.warn("[wfmedical] Bad treatment factor '{}' in '{}'", param, entry);
+            }
+        }
+        return new TraumaResponse(action, effect, factor);
+    }
+
+    private static TraumaResponse.Effect parseEffect(String name) {
+        if (name == null) {
+            return null;
+        }
+        return switch (name.trim().toUpperCase(Locale.ROOT)) {
+            case "STOP", "STOP_BLEED" -> TraumaResponse.Effect.STOP_BLEED;
+            case "REDUCE", "REDUCE_BLEED" -> TraumaResponse.Effect.REDUCE_BLEED;
+            case "SUTURE" -> TraumaResponse.Effect.SUTURE;
+            case "STABILIZE" -> TraumaResponse.Effect.STABILIZE;
+            case "HEAL" -> TraumaResponse.Effect.HEAL;
+            default -> null;
+        };
     }
 
     private static Treatment readTreatment(Config t) {
@@ -192,6 +248,12 @@ public final class MedicalDefinitions {
                 .healthReductionPerSeverity(0.0F).maxSeverity(1.0F).mergeable(true)
                 .treatments(TreatmentAction.HEAL_TRAUMA).build());
 
+        registry.register(TraumaType.builder("blunt_force_trauma", TraumaCategory.BRUISE)
+                .major(false).severityContribution(1.0F).painPerSeverity(0.35F).bleedingPerSeverity(0.0F)
+                .healSpeedPerTick(0.0006F).canReopen(false).permanent(false).movementModifier(1.0F)
+                .healthReductionPerSeverity(12.0F).maxSeverity(1.0F).mergeable(true)
+                .treatments(TreatmentAction.HEAL_TRAUMA).build());
+
         registry.register(TraumaType.builder("laceration_small", TraumaCategory.LACERATION)
                 .major(false).severityContribution(0.4F).painPerSeverity(0.2F).bleedingPerSeverity(0.4F)
                 .healSpeedPerTick(0.0004F).canReopen(true).permanent(false).movementModifier(1.0F)
@@ -220,7 +282,9 @@ public final class MedicalDefinitions {
                 .major(true).severityContribution(0.9F).painPerSeverity(0.4F).bleedingPerSeverity(2.0F)
                 .healSpeedPerTick(0.0F).canReopen(false).permanent(true).movementModifier(1.0F)
                 .healthReductionPerSeverity(5.0F).maxSeverity(1.0F).mergeable(true)
-                .treatments(TreatmentAction.REDUCE_BLEEDING, TreatmentAction.HEAL_TRAUMA).build());
+                // Bandages do nothing to internal bleeding; only a hemostatic (clotting) can slow it.
+                .response(new TraumaResponse(TreatmentAction.BOOST_CLOTTING, TraumaResponse.Effect.REDUCE_BLEED, 0.3F))
+                .treatments(TreatmentAction.HEAL_TRAUMA).build());
 
         registry.register(TraumaType.builder("puncture", TraumaCategory.PUNCTURE)
                 .major(true).severityContribution(0.7F).painPerSeverity(0.5F).bleedingPerSeverity(0.9F)
@@ -232,6 +296,8 @@ public final class MedicalDefinitions {
                 .major(true).severityContribution(0.8F).painPerSeverity(0.6F).bleedingPerSeverity(0.3F)
                 .healSpeedPerTick(0.00008F).canReopen(false).permanent(false).movementModifier(0.85F)
                 .healthReductionPerSeverity(4.0F).maxSeverity(1.0F).mergeable(true)
+                // A dressing fully stops the bleed, but the crush itself only heals from a medkit.
+                .response(new TraumaResponse(TreatmentAction.REDUCE_BLEEDING, TraumaResponse.Effect.STOP_BLEED, 0.0F))
                 .treatments(TreatmentAction.HEAL_TRAUMA).build());
 
         registry.register(TraumaType.builder("radiation_burn", TraumaCategory.RADIATION_BURN)
@@ -247,7 +313,8 @@ public final class MedicalDefinitions {
                 .treatments(TreatmentAction.TREAT_BURN, TreatmentAction.HEAL_TRAUMA).build());
 
         itemTreatments.put("wfmedical:bandage", new Treatment(TreatmentAction.REDUCE_BLEEDING,
-                EnumSet.of(TraumaCategory.LACERATION, TraumaCategory.PUNCTURE), 0.5F, 0.0D, 40, false));
+                EnumSet.of(TraumaCategory.LACERATION, TraumaCategory.PUNCTURE, TraumaCategory.CRUSH_INJURY),
+                0.5F, 0.0D, 40, false));
         itemTreatments.put("wfmedical:splint", new Treatment(TreatmentAction.STABILIZE_FRACTURE,
                 EnumSet.of(TraumaCategory.FRACTURE), 1.0F, 0.0D, 60, false));
         itemTreatments.put("wfmedical:suture_kit", new Treatment(TreatmentAction.SUTURE_WOUND,

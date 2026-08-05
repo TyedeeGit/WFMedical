@@ -23,10 +23,16 @@
 #   healthReductionPerSeverity  float   max-health points removed per unit severity (major)
 #   maxSeverity                 float   clamp for merged/aggregated severity
 #   mergeable                   bool    compatible instances may merge to bound counts
-#   treatmentActions            array   TreatmentAction enum names this trauma responds to
-#                                       (REDUCE_BLEEDING, SUTURE_WOUND, STABILIZE_FRACTURE,
-#                                        RESTORE_BLOOD, REDUCE_PAIN, HEAL_TRAUMA,
-#                                        TREAT_BURN, TREAT_RADIATION)
+#   treatmentActions            array   How this trauma responds to each treatment action. Each entry is
+#                                       "ACTION[=EFFECT[:factor]]". Omitting an action means it does NOTHING
+#                                       to this trauma (e.g. no REDUCE_BLEEDING -> bandages are useless on it).
+#                                       ACTION: REDUCE_BLEEDING, SUTURE_WOUND, STABILIZE_FRACTURE, BOOST_CLOTTING,
+#                                               HEAL_TRAUMA, TREAT_BURN, TREAT_RADIATION
+#                                       EFFECT: STOP (bleed -> 0), REDUCE:factor (bleed -> factor, 0..1),
+#                                               SUTURE (stop + close + mend), STABILIZE (fracture), HEAL (severity)
+#                                       A bare "ACTION" uses a sensible default (REDUCE_BLEEDING=REDUCE:0.25,
+#                                       BOOST_CLOTTING=REDUCE:0.3, SUTURE_WOUND=SUTURE, HEAL_TRAUMA=HEAL, ...).
+#                                       Examples: "REDUCE_BLEEDING=STOP", "REDUCE_BLEEDING=REDUCE:0.5"
 #
 # [[treatment]] tables (one per medical item):
 #   item              string  item id (registry name) the treatment is bound to
@@ -67,6 +73,26 @@ canReopen = false
 permanent = false
 movementModifier = 1.0
 healthReductionPerSeverity = 0.0
+maxSeverity = 1.0
+mergeable = true
+treatmentActions = ["HEAL_TRAUMA"]
+
+# Blunt force trauma: soft-tissue impact from falls and punches. Regenerates on its own, never bleeds,
+# and does not eat into max health. Hard enough impacts may still fracture a bone (a separate injury).
+[[trauma]]
+id = "blunt_force_trauma"
+category = "BRUISE"
+major = false
+severityContribution = 1.0
+painPerSeverity = 0.35
+bleedingPerSeverity = 0.0
+healSpeedPerTick = 0.0006
+canReopen = false
+permanent = false
+movementModifier = 1.0
+# Minor, so healthReductionPerSeverity lowers CURRENT health only (recoverable as it self-heals), not max.
+# 12 * severity HP: a ~10-block fall (severity ~0.6) costs ~7 HP, roughly matching a vanilla fall.
+healthReductionPerSeverity = 12.0
 maxSeverity = 1.0
 mergeable = true
 treatmentActions = ["HEAL_TRAUMA"]
@@ -156,7 +182,7 @@ movementModifier = 1.0
 healthReductionPerSeverity = 5.0
 maxSeverity = 1.0
 mergeable = true
-treatmentActions = ["REDUCE_BLEEDING", "HEAL_TRAUMA"]
+treatmentActions = ["BOOST_CLOTTING=REDUCE:0.3", "HEAL_TRAUMA"]
 
 # Puncture: deep wound, bleeds, can reopen.
 [[trauma]]
@@ -175,7 +201,9 @@ maxSeverity = 1.0
 mergeable = true
 treatmentActions = ["REDUCE_BLEEDING", "SUTURE_WOUND", "HEAL_TRAUMA"]
 
-# Crush injury: blunt trauma, big health hit, mild bleeding.
+# Crush injury: blunt trauma, big health hit, mild bleeding. A dressing (REDUCE_BLEEDING) can stop the
+# bleed, but the crush itself is only healed by a medkit (HEAL_TRAUMA) -- until then it keeps hurting
+# and blocks the limb from recovering.
 [[trauma]]
 id = "crush_injury"
 category = "CRUSH_INJURY"
@@ -190,7 +218,7 @@ movementModifier = 0.85
 healthReductionPerSeverity = 4.0
 maxSeverity = 1.0
 mergeable = true
-treatmentActions = ["HEAL_TRAUMA"]
+treatmentActions = ["REDUCE_BLEEDING=STOP", "HEAL_TRAUMA"]
 
 # Radiation burn: permanent until treated with anti-rad, ongoing damage.
 [[trauma]]
@@ -229,11 +257,11 @@ treatmentActions = ["TREAT_BURN", "HEAL_TRAUMA"]
 
 # ------------------------------- TREATMENTS ----------------------------------
 
-# Bandage: slows bleeding on open wounds.
+# Bandage: stops bleeding on open wounds (cuts, punctures, and the bleed from crush wounds).
 [[treatment]]
 item = "wfmedical:bandage"
 action = "REDUCE_BLEEDING"
-categories = ["LACERATION", "PUNCTURE"]
+categories = ["LACERATION", "PUNCTURE", "CRUSH_INJURY"]
 magnitude = 0.5
 bloodRestoreMl = 0.0
 useDurationTicks = 40
